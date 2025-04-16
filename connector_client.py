@@ -9,8 +9,8 @@ from connector.messages.message_generator import create_request
 from connector.messages.datamodel_utils import BasePayload, SubscriptionUnregisterRequest
 from connector.messages.datamodel_base import ReadCommand, SubscribeCommand, UnsubscribeCommand, ActionCommand
 
-from scripts.connector_client_utils import *
-from scripts.sparql_queries import *
+from connector_client_utils import *
+from sparql_queries import *
 
 import pandas as pd
 import asyncio

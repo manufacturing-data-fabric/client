@@ -1,0 +1,3 @@
+[submodule "connector_base"]
+	path = connector_base
+	url = https://gitlab.lrz.de/data-fabric/connector_base.git
