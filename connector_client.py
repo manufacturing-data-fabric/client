@@ -4,6 +4,7 @@ from typing import Type
 from os import environ
 from dotenv import load_dotenv
 import aiohttp
+from pprint import pprint
 
 from connector.messages.message_generator import create_request
 from connector.messages.datamodel_utils import BasePayload, SubscriptionUnregisterRequest
@@ -11,6 +12,8 @@ from connector.messages.datamodel_base import ReadCommand, SubscribeCommand, Uns
 
 from connector_client_utils import *
 from sparql_queries import *
+
+#from messaging.datamodel import * # todo: remove!!!
 
 import pandas as pd
 import asyncio
@@ -56,7 +59,7 @@ class ConnectorClient:
             f"ConnectorClient initialized with module_id={self.module_id} and bootstrap_servers"
             f"={self.bootstrap_server}")
 
-    async def switch_topic_config(self, module_id: str):
+    async def switch_connector(self, module_id: str):
         if module_id in self.connectors:
             config = self.connectors[module_id]
             self.request_topic = config["request"]
@@ -67,10 +70,10 @@ class ConnectorClient:
         else:
             raise ValueError(f"No topic config found for module_id={module_id}")
 
-    async def return_topics(self):
+    async def return_connectors(self):
         return self.connectors.keys()
 
-    async def load_topic_config(self):
+    async def load_connector_config(self):
         result = await self.query_graphdb(build_connector_metadata_query(), pretty=False)
 
         for connector in result:
@@ -224,8 +227,9 @@ class ConnectorClient:
             async def wait_for_response():
                 async for message in consumer:
                     print("Received message")
-                    print(message.value)
+                    pprint(message.value)
                     msg = MsgModel.model_validate(message.value)
+                    print(f"message type: {type(msg.root.payload.base_payload)}")
                     if msg.root.correlation_id == correlation_id:
                         print(f"Matching response received:\n"
                               f"{msg.root.payload.base_payload.model_dump_json(indent=4)}")
@@ -251,6 +255,7 @@ class ConnectorClient:
             async def wait_for_response():
                 async for message in consumer:
                     msg = MsgModel.model_validate(message.value)
+                    print(f"message type: {type(msg.root.payload.base_payload)}")
                     if msg.root.correlation_id == correlation_id:
                         print(f"Matching response received:\n"
                               f"{msg.root.payload.base_payload.model_dump_json(indent=4)}")
