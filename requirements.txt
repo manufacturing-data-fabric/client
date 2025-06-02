@@ -99,3 +99,5 @@ websocket-client==1.8.0
 yarl==1.19.0
 -e ./connector_base
 uuid==1.30
+matplotlib==3.10.1
+matplotlib-inline==0.1.7
