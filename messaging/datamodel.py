@@ -1,39 +1,54 @@
 from connector.messages.datamodel_utils import BasePayload, register_payload
 
-from pydantic import Field, BaseModel
-from typing import Literal, Any, Union, Optional, List, Dict
+from pydantic import Field
+from typing import Literal, Any, List, Dict
 from uuid import UUID
 from datetime import datetime
 
+# Read Command:
 @register_payload
-class OPCUAReadCommandPayload(BasePayload):
-    type: Literal['OPCUAReadCommandPayload'] = "OPCUAReadCommandPayload"
+class OPCUAReadPayload(BasePayload):
+    type: Literal['OPCUAReadPayload'] = "OPCUAReadPayload"
     nodeid_list: List[str] = Field(..., description="List of OPC UA NodeIDs to read from")
     # todo: ggfs. in "identifier" umbenennnen?
 
 @register_payload
-class OPCUAReadCommandResponse(BasePayload):
-    type: Literal['OPCUAReadCommandResponse'] = "OPCUAReadCommandResponse"
+class OPCUAReadResponsePayload(BasePayload):
+    type: Literal['OPCUAReadResponsePayload'] = "OPCUAReadResponsePayload"
     value_dict: Dict[str, Any]
 
-
+# Subscribe Command:
+@register_payload
+class OPCUASubscribePayload(BasePayload):
+    type: Literal['OPCUASubscribePayload'] = "OPCUASubscribePayload"
+    nodeid_list: List[str] = Field(..., description="List of OPC UA NodeIDs to subscribe to")
 
 @register_payload
-class OPCUASubscribeCommandResponse(BasePayload):
-    type: Literal['OPCUASubscribeCommandResponse'] = "OPCUASubscribeCommandResponse"
+class OPCUASubscribeResponsePayload(BasePayload):
+    type: Literal['OPCUASubscribeResponsePayload'] = "OPCUASubscribeResponsePayload"
     subscription_id: UUID = Field(..., description="Unique Identifier for the active subscription")
     subscription_results: Dict[str, Literal["success", "failed"]] = Field(..., description="Result of each "
                                                                                            "subscription attempt, "
                                                                                            "keyed by node ID")
 
 @register_payload
-class OPCUAUnsubscribeCommandPayload(BasePayload):
-    type: Literal['OPCUAUnsubscribeCommandPayload'] = "OPCUAUnsubscribeCommandPayload"
+class OPCUAWritePayload(BasePayload):
+    type: Literal['OPCUAWritePayload'] = "OPCUAWritePayload"
+    value_dict: Dict[str, Any] = Field(..., description="Dictionary mapping OPC UA NodeIDs to values to write")
+
+@register_payload
+class OPCUAWriteResponsePayload(BasePayload):
+    type: Literal['OPCUAWriteResponsePayload'] = "OPCUAWriteResponsePayload"
+    write_results: Dict[str, Literal["success", "failed"]] = Field(..., description="Result of each write attempt keyed by OPC UA NodeID.")
+
+@register_payload
+class OPCUAUnsubscribePayload(BasePayload):
+    type: Literal['OPCUAUnsubscribePayload'] = "OPCUAUnsubscribePayload"
     subscription_id: UUID = Field(..., description="Unique Identifier for the subscription to be unsubscribed")
 
 @register_payload
-class OPCUAUnsubscribeCommandResponse(BasePayload):
-    type: Literal['OPCUAUnsubscribeCommandResponse'] = "OPCUAUnsubscribeCommandResponse"
+class OPCUAUnsubscribeResponsePayload(BasePayload):
+    type: Literal['OPCUAUnsubscribeResponsePayload'] = "OPCUAUnsubscribeResponsePayload"
     subscription_id: UUID = Field(..., description="ID of the Subscription attempted to be unsubscribed")
     unsubscription_results: Literal["success", "failed"] = Field(..., description="Indicator whether the Unsubscription was successful")
 

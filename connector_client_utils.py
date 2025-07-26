@@ -79,7 +79,7 @@ def dump_payload(msg: MsgModel):
     return msg.model_dump_json(indent=4)
 
 @asynccontextmanager
-async def kafka_consumer_context(topic: str, bootstrap_servers: List[str]):
+async def get_kafka_consumer(topic: str, bootstrap_servers: List[str]):
     consumer = AIOKafkaConsumer(
         topic,
         bootstrap_servers=bootstrap_servers,

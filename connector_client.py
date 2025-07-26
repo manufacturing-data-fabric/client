@@ -13,8 +13,6 @@ from connector.messages.datamodel_base import ReadCommand, SubscribeCommand, Uns
 from connector_client_utils import *
 from sparql_queries import *
 
-#from messaging.datamodel import * # todo: remove!!!
-
 import pandas as pd
 import asyncio
 
@@ -35,7 +33,6 @@ class ConnectorClient:
     def __init__(self, bootstrap_servers: List[str]):
         self.bootstrap_server = bootstrap_servers
         self.producer = None
-        self.consumer = None
 
         # initializing with default .env connector
         self.connector_type = environ.get("MODULE_TYPE")
@@ -88,20 +85,6 @@ class ConnectorClient:
 
 
     async def _create_producer(self):
-        """
-        Create and start a Kafka producer for sending messages to Kafka topics.
-
-        The producer is responsible for sending messages to the Kafka topics specified by the client.
-        This method initializes the producer with the provided bootstrap server and starts it asynchronously.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
-        """
         self._logger.info("Creating Kafka producer...")
         self.producer = AIOKafkaProducer(
             value_serializer=lambda m: m.encode('utf-8'),
@@ -110,39 +93,10 @@ class ConnectorClient:
         await self.producer.start()
         self._logger.info("Kafka producer created and started.")
 
-    async def _create_consumer(self):
-        """
-        Create and start a Kafka consumer for receiving messages from Kafka topics.
-
-        The consumer is initialized to listen to the response topic specified by the client.
-        It uses the provided bootstrap server to connect to Kafka, and deserializes incoming messages as JSON.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
-        """
-        self._logger.info(f"Creating Kafka consumer for topic {self.response_topic}...")
-        self.consumer = AIOKafkaConsumer(
-            self.response_topic,
-            bootstrap_servers=[self.bootstrap_server],
-            value_deserializer=lambda m: json.loads(m.decode('utf-8'))
-        )
-        await self.consumer.start()
-        self._logger.info(f"Kafka consumer for topic {self.response_topic} started.")
-
     async def close(self):
-        # todo: check whether it is necessary to have stop_producer, stop_consumer and close at the same time!!!
-        """Stop both the producer and consumer to ensure cleanup."""
         if self.producer:
             await self.producer.stop()
             self._logger.info("Kafka producer stopped.")
-        if self.consumer:
-            await self.consumer.stop()
-            self._logger.info("Kafka consumer stopped.")
 
     async def _send_request(self, request_message: str, topic_name: str): # todo: do type annotation here if necessary!!!
         if not self.producer or self.producer._closed:
@@ -163,8 +117,6 @@ class ConnectorClient:
             f"Read request sent to {self.request_topic} with payload: {request_message.model_dump_json(indent=4)}")
 
     async def send_subscribe_request(self, base_payload: BasePayload):
-        """ Subscribe to an image feed of an attached camera"""
-
         # todo: important note!!! the subscription_id which is necessary for unsubscribing is located in BasePayload!
         request_message = create_request(base_payload=base_payload, command_type=SubscribeCommand)
         await self._send_request(dump_payload(request_message), self.request_topic)
@@ -194,7 +146,7 @@ class ConnectorClient:
 
         correlation_id = request_message.root.correlation_id
 
-        async with kafka_consumer_context(self.response_topic, self.bootstrap_server) as consumer:
+        async with get_kafka_consumer(self.response_topic, self.bootstrap_server) as consumer:
             await self._send_request(dump_payload(request_message), self.request_topic)
             await self.close()
             async def wait_for_response():
@@ -220,23 +172,31 @@ class ConnectorClient:
         correlation_id = request_message.root.correlation_id
         print(f"Correlation_id of sent message: {correlation_id}")
 
-        async with kafka_consumer_context(self.response_topic, self.bootstrap_server) as consumer:
+        async with get_kafka_consumer(self.response_topic, self.bootstrap_server) as consumer:
             await self._send_request(dump_payload(request_message), self.request_topic)
             await self.close()
             print("waiting for a message")
+
+            matched_responses = []
+
             async def wait_for_response():
                 async for message in consumer:
-                    print("Received message")
-                    pprint(message.value)
+                    print("Received message") # todo: logging command
+                    pprint(message.value) # todo: debug command
                     msg = MsgModel.model_validate(message.value)
                     print(f"message type: {type(msg.root.payload.base_payload)}")
                     if msg.root.correlation_id == correlation_id:
-                        print(f"Matching response received:\n"
-                              f"{msg.root.payload.base_payload.model_dump_json(indent=4)}")
-                        return msg
+                        matched_responses.append(msg)
+                        if len(matched_responses) == 2:
+                            break
             try:
                 result = await asyncio.wait_for(wait_for_response(), timeout=timeout)
-                return result
+                for entry in matched_responses:
+                    if entry.root.payload.base_payload.device_origin=="MetadataTopic":
+                        print("MetdataTopic received")
+                        self.subscriptions.append(entry.root.payload.base_payload.response)
+
+                return matched_responses
             except asyncio.TimeoutError:
                 print(f"Timeout: No response received for correlation_id {correlation_id} within {timeout} seconds.")
 
@@ -249,7 +209,7 @@ class ConnectorClient:
 
         correlation_id = request_message.root.correlation_id
 
-        async with kafka_consumer_context(self.response_topic, self.bootstrap_server) as consumer:
+        async with get_kafka_consumer(self.response_topic, self.bootstrap_server) as consumer:
             await self._send_request(dump_payload(request_message), self.request_topic)
             await self.close()
             async def wait_for_response():
@@ -273,7 +233,7 @@ class ConnectorClient:
 
         subscription_id = msg.root.payload.base_payload.subscription_id
 
-        async with kafka_consumer_context(self.telemetry_topic, self.bootstrap_server) as consumer:
+        async with get_kafka_consumer(self.telemetry_topic, self.bootstrap_server) as consumer:
             start_time = asyncio.get_event_loop().time()
             async for message in consumer:
                 msg = MsgModel.model_validate(message.value)
@@ -309,7 +269,7 @@ class ConnectorClient:
 
 
         # todo: subscribe_from_stream
-        async with kafka_consumer_context(self.telemetry_topic, self.bootstrap_server) as consumer:
+        async with get_kafka_consumer(self.telemetry_topic, self.bootstrap_server) as consumer:
             start_time = asyncio.get_event_loop().time()
             async for message in consumer:
                 msg = MsgModel.model_validate(message.value)

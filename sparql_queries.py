@@ -1,13 +1,215 @@
-# queries_sparql.py
 
-# 1) list all devices
-# 2) get datapoints for a given Device
-# 3) List all Connectors
-# 4) get topics published/subscribed by a connector
-# 5) get all subscriptions
-# 6) get the capabilities of a connector or service
+class Queries:
+    """
+
+    Intent	Required Input(s)	Result
+    - [x] list_instances
+    - [x] get_properties
+    - [x] search entity
+    - [x] get_related
+    - [x] get_related_inverse
+
+    """
+    def __init__(self):
+        self.prefixes = """
+        PREFIX df: <http://stephantrattnig.org/data_fabric_ontology#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        """
+
+    def get_all_classes(self):
+        query = """
+        SELECT DISTINCT ?class WHERE {
+            ?s a ?class .
+        } LIMIT 100
+        """
+        return query
+
+    # this method is applicable for every type of instance - might also be a e.g. DataPoint
+    def build_list_instances_query(self, class_uri: str, optional_props: list[str] = None):
+        """
+        Build a SPARQL query to list instances of a given class and optionally include metadata.
+
+        Args:
+            class_uri (str): The URI of the class (e.g., df:Device).
+            optional_props (list[str]): List of property URIs to include as OPTIONAL fields.
+
+        Returns:
+            str: A SPARQL query string.
+        """
+        optional_props = optional_props or []
+
+        prefixes = """
+        PREFIX df: <http://stephantrattnig.org/data_fabric_ontology#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        """
+
+        select_vars = "?instance"
+        optional_blocks = ""
+
+        for prop_uri in optional_props:
+            var_name = prop_uri.split(":")[-1] if ":" in prop_uri else prop_uri.split("#")[-1]
+            select_vars += f" ?{var_name}"
+            optional_blocks += f"OPTIONAL {{ ?instance {prop_uri} ?{var_name} . }}\n"
+
+        query = f"""
+        {prefixes}
+
+        SELECT {select_vars}
+        WHERE {{
+            ?instance a {class_uri} .
+            {optional_blocks}
+        }}
+        """
+        return query.strip()
+
+    def build_get_properties_query(self, subject_uri: str, property_uris: list[str] = None) -> str:
+        prefix = """
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX df: <http://stephantrattnig.org/data_fabric_ontology#>
+        """
+
+        if property_uris is None:
+            return prefix + f"""
+        SELECT ?p ?o WHERE {{
+          <{subject_uri}> ?p ?o .
+        }}
+        """
+
+        query_body = f"VALUES ?s {{ <{subject_uri}> }}\n"
+        select_vars = []
+
+        for prop in property_uris:
+            if prop.startswith("?"):
+                raise ValueError(f"Invalid property name: {prop}")
+            # Handle prefixed or full URI forms
+            if ":" in prop and not prop.startswith("http"):
+                # prefixed name like df:hasUnit
+                var = prop.split(":")[-1]
+                query_body += f"OPTIONAL {{ ?s {prop} ?{var} . }}\n"
+            elif prop.startswith("http"):
+                # full URI
+                var = prop.split("#")[-1] if "#" in prop else prop.split("/")[-1]
+                query_body += f"OPTIONAL {{ ?s <{prop}> ?{var} . }}\n"
+            else:
+                raise ValueError(f"Unsupported property URI format: {prop}")
+
+            select_vars.append(f"?{var}")
+
+        return prefix + f"""
+        SELECT ?s {' '.join(select_vars)}
+        WHERE {{
+          {query_body}
+        }}
+        """
+
+    def search_entity_query(
+        self,
+        keyword: str,
+        class_uri: str = None,
+        property_uri: str = "rdfs:label",
+        match_mode: str = "fuzzy"  # or "exact"
+    ) -> str:
+        """
+        Build a flexible SPARQL query to search for entities by keyword.
+
+        Supports:
+          - Fuzzy search on rdfs:label (default)
+          - Exact match on any property
+          - Optional class restriction
+
+        Args:
+            keyword (str): The search term (either fuzzy keyword or exact value).
+            class_uri (str, optional): Restrict results to instances of this class (e.g., df:Device).
+            property_uri (str): The property to search (e.g., rdfs:label, df:deviceIdentifier).
+            match_mode (str): "fuzzy" for partial match, "exact" for literal match.
+
+        Returns:
+            str: SPARQL query string.
+        """
+        prefixes = """
+            PREFIX df: <http://stephantrattnig.org/data_fabric_ontology#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        """
+
+        class_filter = f"?instance a {class_uri} ." if class_uri else ""
+
+        if match_mode == "fuzzy":
+            filter_clause = f"""
+                ?instance {property_uri} ?label .
+                FILTER(CONTAINS(LCASE(STR(?label)), LCASE("{keyword}")))
+            """
+        elif match_mode == "exact":
+            filter_clause = f"""
+                ?instance {property_uri} "{keyword}" .
+            """
+        else:
+            raise ValueError("match_mode must be 'fuzzy' or 'exact'.")
+
+        return prefixes + f"""
+            SELECT DISTINCT ?instance ?label WHERE {{
+                {class_filter}
+                {filter_clause}
+                OPTIONAL {{ ?instance rdfs:label ?label }}
+            }}
+            LIMIT 50
+        """.strip()
+
+    def build_get_related_query(self, subject_uri: str, predicate_uri: str) -> str:
+        """
+        Build a SPARQL query to get related entities via an outgoing property.
+
+        Args:
+            subject_uri (str): The URI of the subject entity (e.g., a Device).
+            predicate_uri (str): The URI of the property to follow (e.g., df:hasDataPoint).
+
+        Returns:
+            str: A SPARQL query string returning related objects and their labels.
+        """
+        prefixes = """
+        PREFIX df: <http://stephantrattnig.org/data_fabric_ontology#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        """
+
+        query = f"""
+        {prefixes}
+        SELECT ?object ?label WHERE {{
+            <{subject_uri}> <{predicate_uri}> ?object .
+            OPTIONAL {{ ?object rdfs:label ?label }}
+        }}
+        """
+        return query.strip()
+
+    def build_get_related_inverse_query(
+        self,
+        object_uri: str,
+        predicate_uri: str,
+        optional_props: list[str] = None
+    ) -> str:
+        prefixes = """
+        PREFIX df: <http://stephantrattnig.org/data_fabric_ontology#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        """
+
+        optional_props = optional_props or []
+        select_vars = "?subject ?label"
+        optional_clauses = "OPTIONAL { ?subject rdfs:label ?label }\n"
+
+        for prop in optional_props:
+            var_name = prop.split("#")[-1] if "#" in prop else prop.split("/")[-1]
+            select_vars += f" ?{var_name}"
+            optional_clauses += f"OPTIONAL {{ ?subject <{prop}> ?{var_name} }}\n"
+
+        return f"""
+        {prefixes}
+        SELECT {select_vars} WHERE {{
+            ?subject <{predicate_uri}> <{object_uri}> .
+            {optional_clauses}
+        }}
+        """.strip()
 
 
+
+# list instances
 def build_all_devices_query():
     """
     Constructs a SPARQL query to retrieve all devices and their basic metadata.
@@ -30,6 +232,7 @@ def build_all_devices_query():
     }
     """
 
+# search entity
 def build_device_by_identifier_query(identifier: str):
     return f"""
     PREFIX df: <http://stephantrattnig.org/data_fabric_ontology#>
@@ -40,6 +243,7 @@ def build_device_by_identifier_query(identifier: str):
     }}
     """
 
+# get properties
 def build_device_details_query(device_uri: str) -> str:
     return f"""
 PREFIX df: <http://stephantrattnig.org/data_fabric_ontology#>
@@ -59,6 +263,7 @@ WHERE {{
 }}
 """
 
+# very specific (but related to get related)
 def build_subscription_query(device_identifier=None, service_uri=None):
     device_filter = f'?device df:deviceIdentifier "{device_identifier}" .' if device_identifier else '?device df:deviceIdentifier ?identifier .'
     service_filter = f'FILTER (?service = <{service_uri}>)' if service_uri else ''
@@ -79,6 +284,7 @@ def build_subscription_query(device_identifier=None, service_uri=None):
     """
     return query
 
+# specific query (multi-hop get_related_inverse)
 def build_subscription_query_new(device_identifier=None, service_uri=None):
     device_filter = (
         f'?device df:deviceIdentifier "{device_identifier}" .'
@@ -109,7 +315,7 @@ def build_subscription_query_new(device_identifier=None, service_uri=None):
     return query
 
 
-
+# list instances
 def build_all_subscriptions_query():
     return """
     PREFIX df: <http://stephantrattnig.org/data_fabric_ontology#>
@@ -123,6 +329,8 @@ def build_all_subscriptions_query():
         OPTIONAL { ?subscription df:hasSubscriptionState ?state . }
     }
     """
+
+# get related
 def get_datapoint_query(service_uri: str) -> str:
     return f"""
         PREFIX df: <http://stephantrattnig.org/data_fabric_ontology#>
@@ -137,6 +345,7 @@ def get_datapoint_query(service_uri: str) -> str:
         }}
     """
 
+# get related inverse
 def build_subscriptions_for_datapoint_query(datapoint_uri: str) -> str:
     return f"""
     PREFIX df: <http://stephantrattnig.org/data_fabric_ontology#>
@@ -150,6 +359,7 @@ def build_subscriptions_for_datapoint_query(datapoint_uri: str) -> str:
     }}
     """
 
+# list instances
 def build_topics_query() -> str:
     return """
     PREFIX df: <http://stephantrattnig.org/data_fabric_ontology#>
@@ -163,6 +373,7 @@ def build_topics_query() -> str:
     }
     """
 
+# special case multi hop most closely related to get_related
 def build_topic_query(
     connector_uri: str = None,
     topic_type_uri: str = None,
@@ -212,7 +423,7 @@ def build_topic_query(
     """
 
 
-
+# more complex one: multi-hop relationship
 def build_subscription_by_id_query(subscription_id: str) -> str:
     """
     Build a SPARQL query for retrieving metadata about a specific subscription, given its ID.
@@ -244,6 +455,7 @@ def build_subscription_by_id_query(subscription_id: str) -> str:
     }}
     """
 
+# more complex one: multi hop and so on
 def build_datapoints_for_subscription_query(subscription_id: str) -> str:
     """
     Build a SPARQL query to get all DataPoints related to a given Subscription.
@@ -268,6 +480,7 @@ def build_datapoints_for_subscription_query(subscription_id: str) -> str:
     }}
     """
 
+# list instances
 def build_connector_metadata_query() -> str:
     """
     Build a SPARQL query to retrieve metadata for all Connector instances,
@@ -290,6 +503,7 @@ def build_connector_metadata_query() -> str:
     }
     """
 
+# multi-hop
 def build_connector_datapoint_query() -> str:
     """
     Constructs a SPARQL query that retrieves all connectors along with
