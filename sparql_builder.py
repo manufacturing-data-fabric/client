@@ -1,31 +1,209 @@
 
-class Queries:
+class SPARQLBuilder:
+    """
+    Utility class for generating SPARQL queries from high-level intent.
+
+    Supported query intents:
+    - list_instances: list instances of a class with optional properties
+    - get_properties: get all or selected properties of a given instance
+    - search_entity: search entities by keyword in a given property (label by default)
+    - get_related: follow a predicate to related entities (subject → object)
+    - get_related_inverse: find subjects that point to a given object via a predicate
     """
 
-    Intent	Required Input(s)	Result
-    - [x] list_instances
-    - [x] get_properties
-    - [x] search entity
-    - [x] get_related
-    - [x] get_related_inverse
-
-    """
     def __init__(self):
+        # Define all standard prefixes used in the queries
         self.prefixes = """
         PREFIX df: <http://stephantrattnig.org/data_fabric_ontology#>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX df_instance: <http://stephantrattnig.org/instances#>
+        """.strip()
+
+    def _wrap_uri(self, uri: str) -> str:
         """
+        Wraps identifiers into full URIs if they are not prefixed names or already complete URIs.
+        Assumes local identifiers (e.g., UUIDs) should be resolved against df_instance: prefix.
+        """
+        if uri.startswith("http://") or uri.startswith("https://") or ":" in uri:
+            return f"<{uri}>" if uri.startswith("http") else uri
+        # Assume local ID, wrap using df_instance namespace
+        return f"<http://stephantrattnig.org/instances#{uri}>"
+
+
+    def _get_var_name(self, uri: str) -> str:
+        """
+        Extracts a variable name from a URI or prefixed name.
+        Example: df:label → label, http://.../label → label
+        """
+        if ":" in uri:
+            return uri.split(":")[-1]
+        if "#" in uri:
+            return uri.split("#")[-1]
+        return uri.split("/")[-1]
 
     def get_all_classes(self):
-        query = """
+        """
+        Returns a query to list all unique RDF classes used in the dataset.
+        """
+        return self.prefixes + """
+
         SELECT DISTINCT ?class WHERE {
             ?s a ?class .
         } LIMIT 100
         """
-        return query
 
-    # this method is applicable for every type of instance - might also be a e.g. DataPoint
     def build_list_instances_query(self, class_uri: str, optional_props: list[str] = None):
+        """
+        Build a query to list all instances of a given class, optionally including properties.
+
+        Args:
+            class_uri: the class to filter on (e.g., df:DataPoint)
+            optional_props: list of property URIs to return if available
+
+        Returns:
+            SPARQL query string
+        """
+        optional_props = optional_props or []
+        select_vars = "?instance"
+        optional_blocks = ""
+
+        for prop in optional_props:
+            var = self._get_var_name(prop)
+            select_vars += f" ?{var}"
+            optional_blocks += f"OPTIONAL {{ ?instance {self._wrap_uri(prop)} ?{var} . }}\n"
+
+        return f"""
+        {self.prefixes}
+
+        SELECT {select_vars} WHERE {{
+            ?instance a {self._wrap_uri(class_uri)} .
+            {optional_blocks}
+        }}
+        """.strip()
+
+    def build_get_properties_query(self, subject_uri: str, property_uris: list[str] = None):
+        """
+        Build a query to retrieve all or selected properties of a subject.
+
+        Args:
+            subject_uri: full URI or prefixed name of the entity
+            property_uris: list of specific property URIs to fetch, or None for all
+
+        Returns:
+            SPARQL query string
+        """
+        if property_uris is None:
+            return self.prefixes + f"""
+            SELECT ?p ?o WHERE {{
+              {self._wrap_uri(subject_uri)} ?p ?o .
+            }}
+            """
+
+        query_body = f"VALUES ?s {{ {self._wrap_uri(subject_uri)} }}\n"
+        select_vars = []
+
+        for prop in property_uris:
+            var = self._get_var_name(prop)
+            query_body += f"OPTIONAL {{ ?s {self._wrap_uri(prop)} ?{var} . }}\n"
+            select_vars.append(f"?{var}")
+
+        return self.prefixes + f"""
+        SELECT ?s {' '.join(select_vars)} WHERE {{
+            {query_body}
+        }}
+        """.strip()
+
+    def build_search_entity_query(self, keyword: str, class_uri: str = None,
+                                  property_uri: str = "rdfs:label", match_mode: str = "fuzzy"):
+        """
+        Build a query to search for entities by keyword in a label or other property.
+
+        Args:
+            keyword: search string
+            class_uri: optional RDF class restriction
+            property_uri: property to search (e.g. rdfs:label or df:deviceIdentifier)
+            match_mode: 'fuzzy' for contains, 'exact' for exact match
+
+        Returns:
+            SPARQL query string
+        """
+        class_filter = f"?instance a {self._wrap_uri(class_uri)} ." if class_uri else ""
+
+        if match_mode == "fuzzy":
+            filter_clause = f"""
+                ?instance {self._wrap_uri(property_uri)} ?label .
+                FILTER(CONTAINS(LCASE(STR(?label)), LCASE(\"{keyword}\")))
+            """
+        elif match_mode == "exact":
+            filter_clause = f"?instance {self._wrap_uri(property_uri)} \"{keyword}\" ."
+        else:
+            raise ValueError("match_mode must be 'fuzzy' or 'exact'.")
+
+        return self.prefixes + f"""
+        SELECT DISTINCT ?instance ?label WHERE {{
+            {class_filter}
+            {filter_clause}
+            OPTIONAL {{ ?instance rdfs:label ?label }}
+        }}
+        LIMIT 50
+        """.strip()
+
+    def build_get_related_query(self, subject_uri: str, predicate_uri: str):
+        """
+        Build a query to get objects linked by a property from a subject.
+
+        Args:
+            subject_uri: URI of the subject entity
+            predicate_uri: URI of the outgoing predicate
+
+        Returns:
+            SPARQL query string
+        """
+        return self.prefixes + f"""
+        SELECT ?object ?label WHERE {{
+            {self._wrap_uri(subject_uri)} {self._wrap_uri(predicate_uri)} ?object .
+            OPTIONAL {{ ?object rdfs:label ?label }}
+        }}
+        """.strip()
+
+    def build_get_related_inverse_query(self, object_uri: str, predicate_uri: str,
+                                        optional_props: list[str] = None):
+        """
+        Build a query to find subjects that reference an object via a predicate.
+
+        Args:
+            object_uri: URI of the object
+            predicate_uri: property URI used in reverse
+            optional_props: additional properties to return for the subject
+
+        Returns:
+            SPARQL query string
+        """
+        optional_props = optional_props or []
+        select_vars = "?subject ?label"
+        optional_clauses = "OPTIONAL { ?subject rdfs:label ?label }\n"
+
+        for prop in optional_props:
+            var = self._get_var_name(prop)
+            select_vars += f" ?{var}"
+            optional_clauses += f"OPTIONAL {{ ?subject {self._wrap_uri(prop)} ?{var} }}\n"
+
+        return self.prefixes + f"""
+        SELECT {select_vars} WHERE {{
+            ?subject {self._wrap_uri(predicate_uri)} {self._wrap_uri(object_uri)} .
+            {optional_clauses}
+        }}
+        """.strip()
+
+
+
+
+
+
+
+    #### old deprecated methods - todo: delete
+
+    def build_list_instances_query_old(self, class_uri: str, optional_props: list[str] = None):
         """
         Build a SPARQL query to list instances of a given class and optionally include metadata.
 
@@ -38,10 +216,7 @@ class Queries:
         """
         optional_props = optional_props or []
 
-        prefixes = """
-        PREFIX df: <http://stephantrattnig.org/data_fabric_ontology#>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        """
+        prefixes = self.prefixes
 
         select_vars = "?instance"
         optional_blocks = ""
@@ -62,11 +237,8 @@ class Queries:
         """
         return query.strip()
 
-    def build_get_properties_query(self, subject_uri: str, property_uris: list[str] = None) -> str:
-        prefix = """
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX df: <http://stephantrattnig.org/data_fabric_ontology#>
-        """
+    def build_get_properties_query_old(self, subject_uri: str, property_uris: list[str] = None) -> str:
+        prefix = self.prefixes
 
         if property_uris is None:
             return prefix + f"""
@@ -102,7 +274,8 @@ class Queries:
         }}
         """
 
-    def search_entity_query(
+
+    def search_entity_query_old(
         self,
         keyword: str,
         class_uri: str = None,
@@ -154,7 +327,7 @@ class Queries:
             LIMIT 50
         """.strip()
 
-    def build_get_related_query(self, subject_uri: str, predicate_uri: str) -> str:
+    def build_get_related_query_old(self, subject_uri: str, predicate_uri: str) -> str:
         """
         Build a SPARQL query to get related entities via an outgoing property.
 
@@ -179,7 +352,7 @@ class Queries:
         """
         return query.strip()
 
-    def build_get_related_inverse_query(
+    def build_get_related_inverse_query_old(
         self,
         object_uri: str,
         predicate_uri: str,
@@ -207,6 +380,8 @@ class Queries:
         }}
         """.strip()
 
+
+################ Old ##################
 
 
 # list instances

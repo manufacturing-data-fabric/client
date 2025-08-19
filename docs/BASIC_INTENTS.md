@@ -1,7 +1,3 @@
-Certainly! Below is an **extensive description of each of the five core query intents**, explaining their **purpose**, **conceptual scope**, **technical details**, **usage patterns**, and **value in a knowledge graph context**.
-
----
-
 ## 🔎 1. `list_instances`
 
 ### ✅ Purpose:
@@ -218,5 +214,3 @@ Together, these five intents form a **minimal, complete interaction model** for:
 * Supporting exploratory or structured semantic queries
 
 They’re **generic**, **composable**, and **implementation-agnostic**, which is key for maintainable tooling across different domains or ontologies.
-
-Would you like this turned into a Markdown doc or code docstring template?
