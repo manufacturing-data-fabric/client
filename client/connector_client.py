@@ -14,8 +14,8 @@ from connector.messages.message_generator import create_request
 from connector.messages.datamodel_utils import BasePayload, SubscriptionUnregisterRequest, SubscriptionRegisterRequest
 from connector.messages.datamodel_base import ReadCommand, SubscribeCommand, UnsubscribeCommand, ActionCommand
 
-from connector_client_utils import *
-from sparql_builder import *
+from .connector_client_utils import *
+from .sparql_builder import *
 from messaging.datamodel import OPCUAReadPayload, \
     OPCUAWritePayload  # todo: for a protocol-neutral client, this needs to be removed
 
@@ -80,11 +80,14 @@ class ConnectorClient:
 
     async def load_connector_config(self):
         # todo: think about executing this during __init__
+        # todo: the df: was necessary but was just adapted here for convenience. Reason are new sparql_builder methods
+        # todo: in future, eventually clean up and use the namespace_resolver here?
+        df = "http://stephantrattnig.org/data_fabric_ontology#"
         query = self.builder.build_list_instances_query(
-            class_uri="df:Connector",
+            class_uri=f"{df}Connector",
             optional_props=[
-                "df:moduleId",
-                "df:moduleType"
+                f"{df}moduleId",
+                f"{df}moduleType"
             ]
         )
         result = await self.query_graphdb(query, pretty=False)
@@ -514,7 +517,7 @@ class ConnectorClient:
 
 ####### sparql stuff
 
-    async def query_graphdb(self, query: str, pretty=True):
+    async def query_graphdb(self, query: str, pretty=False):
         async with aiohttp.ClientSession() as session:
             headers = {
                 "Accept": "application/sparql-results+json",
@@ -536,6 +539,10 @@ class ConnectorClient:
                     return []
 
     # basic intents
+    async def get_all_classes(self):
+        query = self.builder.get_all_classes()
+        return await self.query_graphdb(query)
+
     async def list_instances(self, class_uri: str, optional_props: list[str] = None):
         query = self.builder.build_list_instances_query(class_uri, optional_props)
         return await self.query_graphdb(query)
@@ -587,6 +594,9 @@ class ConnectorClient:
 
     def query_graphdb_sync(self, query: str, pretty=True):
         return run_async_in_sync(self.query_graphdb, query, pretty)
+
+    def get_all_classes_sync(self):
+        return run_async_in_sync(self.get_all_classes)
 
     def list_instances_sync(self, class_uri: str, optional_props: list[str] = None):
         return run_async_in_sync(self.list_instances, class_uri, optional_props)

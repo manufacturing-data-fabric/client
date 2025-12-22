@@ -2,13 +2,11 @@
 import sys
 from os import environ
 import os
-import uuid
+
 sys.path.append(os.path.abspath(".."))
 
-from sparql_builder import SPARQLBuilder
-from sparql_builder import * # todo: remove later
-from connector_client import ConnectorClient
-from connector.messages.datamodel_utils import SubscriptionRegisterRequest, SubscriptionUnregisterRequest # generic messages within the connector_base repo
+from client.client.sparql_builder import * # todo: remove later
+from client.client.connector_client import ConnectorClient
 
 client = ConnectorClient(bootstrap_servers=[environ.get("KAFKA_BROKER")])
 builder = SPARQLBuilder()
