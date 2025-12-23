@@ -16,6 +16,11 @@ from connector.messages.datamodel_base import ReadCommand, SubscribeCommand, Uns
 
 from .connector_client_utils import *
 from .sparql_builder import *
+
+# Namespace constants (until namespace_resolver is integrated)
+DF = "http://stephantrattnig.org/data_fabric_ontology#"
+DF_INSTANCE = "http://stephantrattnig.org/instances#"
+RDFS = "http://www.w3.org/2000/01/rdf-schema#"
 from messaging.datamodel import OPCUAReadPayload, \
     OPCUAWritePayload  # todo: for a protocol-neutral client, this needs to be removed
 
@@ -328,23 +333,23 @@ class ConnectorClient:
         """Resolve all KG information needed for subscription or read"""
 
         # Get DataPoint identifier
-        props = await self.get_properties(subject_uri=datapoint_uri, property_uris=["df:dataPointIdentifier"])
-        datapoint_identifier = props.iloc[0]["dataPointIdentifier"]
+        props = await self.get_properties(subject_uri=datapoint_uri, property_uris=[f"{DF}dataPointIdentifier"], pretty=True)
+        datapoint_identifier = props.iloc[0]["object"]
 
         # Trace to device
-        device_result = await self.get_related_inverse(object_uri=datapoint_uri, predicate_uri="df:hasDataPoint")
-        device_uri = self.builder._wrap_uri(device_result.iloc[0]["subject"])
+        device_result = await self.get_related_inverse(object_uri=datapoint_uri, predicate_uri=f"{DF}hasDataPoint", pretty=True)
+        device_uri = f"{DF_INSTANCE}{device_result.iloc[0]['subjectIri']}"
 
         # Trace to service
-        service_result = await self.get_related(subject_uri=device_uri, predicate_uri="df:providesService")
-        service_uri = self.builder._wrap_uri(service_result.iloc[0]["object"])
+        service_result = await self.get_related(subject_uri=device_uri, predicate_uri=f"{DF}providesService", pretty=True)
+        service_uri = f"{DF_INSTANCE}{service_result.iloc[0]['object']}"
 
         # Trace to connector
-        connector_result = await self.get_related_inverse(object_uri=service_uri, predicate_uri="df:connectedTo")
-        connector_uri = self.builder._wrap_uri(connector_result.iloc[0]["subject"])
+        connector_result = await self.get_related_inverse(object_uri=service_uri, predicate_uri=f"{DF}connectedTo", pretty=True)
+        connector_uri = f"{DF_INSTANCE}{connector_result.iloc[0]['subjectIri']}"
 
-        module_result = await self.get_properties(subject_uri=connector_uri, property_uris=["df:moduleId"])
-        module_id = module_result.iloc[0]["moduleId"]
+        module_result = await self.get_properties(subject_uri=connector_uri, property_uris=[f"{DF}moduleId"], pretty=True)
+        module_id = module_result.iloc[0]["object"]
 
         return {
             "datapoint_identifier": datapoint_identifier,
@@ -356,11 +361,11 @@ class ConnectorClient:
 
     async def resolve_connector_from_subscription(self, subscription_uri: str):
 
-        result = await self.get_related_inverse(object_uri=subscription_uri, predicate_uri="df:tracksSubscription")
-        connector_uri = result.iloc[0]["subject"]  # this should be the connector URI
+        result = await self.get_related_inverse(object_uri=subscription_uri, predicate_uri=f"{DF}tracksSubscription", pretty=True)
+        connector_uri = f"{DF_INSTANCE}{result.iloc[0]['subjectIri']}"  # this should be the connector URI
 
-        module_result = await self.get_properties(subject_uri=connector_uri, property_uris=["df:moduleId"])
-        module_id = module_result.iloc[0]["moduleId"]
+        module_result = await self.get_properties(subject_uri=connector_uri, property_uris=[f"{DF}moduleId"], pretty=True)
+        module_id = module_result.iloc[0]["object"]
 
         return {
             "connector_uri": connector_uri,
@@ -539,30 +544,30 @@ class ConnectorClient:
                     return []
 
     # basic intents
-    async def get_all_classes(self):
+    async def get_all_classes(self, pretty: bool=False):
         query = self.builder.get_all_classes()
-        return await self.query_graphdb(query)
+        return await self.query_graphdb(query, pretty=pretty)
 
-    async def list_instances(self, class_uri: str, optional_props: list[str] = None):
+    async def list_instances(self, class_uri: str, optional_props: list[str] = None, pretty: bool = False):
         query = self.builder.build_list_instances_query(class_uri, optional_props)
-        return await self.query_graphdb(query)
+        return await self.query_graphdb(query, pretty=pretty)
 
-    async def get_properties(self, subject_uri: str, property_uris: list[str] = None):
+    async def get_properties(self, subject_uri: str, property_uris: list[str] = None, pretty: bool = False):
         query = self.builder.build_get_properties_query(subject_uri, property_uris)
-        return await self.query_graphdb(query)
+        return await self.query_graphdb(query, pretty=pretty)
 
-    async def get_related(self, subject_uri: str, predicate_uri: str):
+    async def get_related(self, subject_uri: str, predicate_uri: str, pretty: bool = False):
         query = self.builder.build_get_related_query(subject_uri, predicate_uri)
-        return await self.query_graphdb(query)
+        return await self.query_graphdb(query, pretty=pretty)
 
-    async def get_related_inverse(self, object_uri: str, predicate_uri: str, optional_props: list[str] = None):
+    async def get_related_inverse(self, object_uri: str, predicate_uri: str, optional_props: list[str] = None, pretty=False):
         query = self.builder.build_get_related_inverse_query(object_uri, predicate_uri, optional_props)
-        return await self.query_graphdb(query)
+        return await self.query_graphdb(query, pretty=pretty)
 
     async def search_entity(self, keyword: str, class_uri: str = None, property_uri: str = "rdfs:label",
-                     match_mode: str = "fuzzy"):
+                     match_mode: str = "fuzzy", pretty: bool = False):
         query = self.builder.build_search_entity_query(keyword, class_uri, property_uri, match_mode)
-        return await self.query_graphdb(query)
+        return await self.query_graphdb(query, pretty=pretty)
 
 ####### sync methods
 
