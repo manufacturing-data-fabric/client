@@ -545,7 +545,7 @@ class ConnectorClient:
 
     # basic intents
     async def get_all_classes(self, pretty: bool=False):
-        query = self.builder.get_all_classes()
+        query = self.builder.get_all_classes_query()
         return await self.query_graphdb(query, pretty=pretty)
 
     async def list_instances(self, class_uri: str, optional_props: list[str] = None, pretty: bool = False):
