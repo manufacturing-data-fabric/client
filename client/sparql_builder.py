@@ -3,6 +3,77 @@ import re
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 
 
+def _wrap_uri(uri: str) -> str:
+    """Wrap a full IRI in SPARQL angle brackets.
+
+    If `uri` is already wrapped as `<...>`, it is returned unchanged.
+
+    Args:
+        uri: Full IRI string (e.g., "https://example.org/foo") or a string
+            already wrapped as "<https://example.org/foo>".
+
+    Returns:
+        The IRI token safe for SPARQL usage, e.g. "<https://example.org/foo>".
+
+    Raises:
+        ValueError: If `uri` is not already wrapped and is not an absolute IRI
+            starting with "http://" or "https://".
+    """
+    # uri may already be <...>
+    if uri.startswith("<") and uri.endswith(">"):
+        return uri
+    # accept only full IRIs here
+    if uri.startswith("http://") or uri.startswith("https://"):
+        return f"<{uri}>"
+    raise ValueError(f"_wrap_uri expects a full IRI, got: {uri}")
+
+
+def _get_var_name(uri: str) -> str:
+    """Derive a SPARQL variable name from a URI/IRI.
+
+    The method extracts the local name (fragment after `#` or last path
+    segment after `/`), normalizes it to a valid SPARQL variable identifier,
+    and falls back to a stable placeholder if needed.
+
+    Normalization rules:
+      - Non-alphanumeric/underscore characters are replaced with underscores.
+      - If the name does not start with a letter or underscore, it is prefixed
+        with "v_".
+      - If the extracted local name is empty, returns "v".
+
+    Args:
+        uri: Full IRI string or wrapped "<...>" form.
+
+    Returns:
+        A variable-safe local name, e.g. "connectedTo" for a property IRI.
+    """
+    # strip angle brackets if present
+    if uri.startswith("<") and uri.endswith(">"):
+        uri = uri[1:-1]
+    local = uri.split("#")[-1].split("/")[-1]
+    local = re.sub(r"[^A-Za-z0-9_]", "_", local)
+    if not re.match(r"^[A-Za-z_]", local):
+        local = f"v_{local}"
+    return local or "v"
+
+
+def _escape_literal(s: str) -> str:
+    """Escape a Python string for safe use as a SPARQL string literal.
+
+    This performs minimal escaping appropriate for embedding user-provided
+    input into double-quoted SPARQL literals by escaping backslashes and
+    double quotes.
+
+    Args:
+        s: Raw string to embed in a SPARQL literal.
+
+    Returns:
+        The escaped string suitable for insertion into `"..."` in SPARQL.
+    """
+    # minimal safe escaping for string literals
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
 class SPARQLBuilder:
     """Utility class for generating SPARQL queries from high-level intent.
 
@@ -83,15 +154,15 @@ class SPARQLBuilder:
 
         # optional extra properties requested by the caller
         for prop in optional_props:
-            var = self._get_var_name(prop)  # e.g. df:connectedTo -> "connectedTo"
-            optional_blocks.append(f"OPTIONAL {{ ?entityIri {self._wrap_uri(prop)} ?{var} . }}")
+            var = _get_var_name(prop)  # e.g. df:connectedTo -> "connectedTo"
+            optional_blocks.append(f"OPTIONAL {{ ?entityIri {_wrap_uri(prop)} ?{var} . }}")
             select_vars.append(f"?{var}")
 
         return f"""
         {self.prefixes}
 
         SELECT DISTINCT {' '.join(select_vars)} WHERE {{
-            ?entityIri a {self._wrap_uri(class_uri)} .
+            ?entityIri a {_wrap_uri(class_uri)} .
             {' '.join(optional_blocks)}
         }}
         """.strip()
@@ -132,7 +203,7 @@ class SPARQLBuilder:
             ValueError: If `subject_uri` or any entry in `property_uris` is not a
                 full IRI (or already wrapped) accepted by `_wrap_uri()`.
         """
-        subject_token = self._wrap_uri(subject_uri)
+        subject_token = _wrap_uri(subject_uri)
 
         # Case 1: No predicate filter → return all triples about this subject
         if not property_uris:
@@ -154,7 +225,7 @@ class SPARQLBuilder:
             )
 
         # Case 2: Restrict to selected predicates only
-        values_props = " ".join(self._wrap_uri(p) for p in property_uris)
+        values_props = " ".join(_wrap_uri(p) for p in property_uris)
 
         return (
             self.prefixes
@@ -218,21 +289,21 @@ class SPARQLBuilder:
         """
         # Default to rdfs:label (full IRI)
         prop = property_uri or RDFS_LABEL
-        kw = self._escape_literal(keyword)
+        kw = _escape_literal(keyword)
 
-        class_filter = f"?entityIri a {self._wrap_uri(class_uri)} .\n" if class_uri else ""
+        class_filter = f"?entityIri a {_wrap_uri(class_uri)} .\n" if class_uri else ""
 
         # --- MATCH CLAUSE ---------------------------------------------------------
         if match_mode == "fuzzy":
             filter_clause = (
-                f"?entityIri {self._wrap_uri(prop)} ?matchLiteral .\n"
+                f"?entityIri {_wrap_uri(prop)} ?matchLiteral .\n"
                 f'FILTER(CONTAINS(LCASE(STR(?matchLiteral)), LCASE("{kw}")))'
             )
             # SPARQL cannot compute a fuzzy similarity – set matchScore = 1.0
             score_binding = "BIND(1.0 AS ?matchScore)"
         elif match_mode == "exact":
             filter_clause = (
-                f"?entityIri {self._wrap_uri(prop)} ?matchLiteral .\n"
+                f"?entityIri {_wrap_uri(prop)} ?matchLiteral .\n"
                 f'FILTER(STR(?matchLiteral) = "{kw}")'
             )
             score_binding = "BIND(1.0 AS ?matchScore)"
@@ -247,7 +318,7 @@ class SPARQLBuilder:
             {class_filter}
             {filter_clause}
             {score_binding}
-            OPTIONAL {{ ?entityIri {self._wrap_uri(RDFS_LABEL)} ?entityLabel . }}
+            OPTIONAL {{ ?entityIri {_wrap_uri(RDFS_LABEL)} ?entityLabel . }}
             OPTIONAL {{ ?entityIri rdf:type ?entityType . }}
             
         # Instance-only filter by namespace
@@ -286,18 +357,18 @@ class SPARQLBuilder:
             ?predicate
             ?object ?objectLabel ?objectType
         WHERE {{
-            BIND({self._wrap_uri(subject_uri)} AS ?subjectIri)
-            BIND({self._wrap_uri(predicate_uri)} AS ?predicate)
+            BIND({_wrap_uri(subject_uri)} AS ?subjectIri)
+            BIND({_wrap_uri(predicate_uri)} AS ?predicate)
 
             # subject label & type
-            OPTIONAL {{ ?subjectIri {self._wrap_uri(RDFS_LABEL)} ?subjectLabel . }}
+            OPTIONAL {{ ?subjectIri {_wrap_uri(RDFS_LABEL)} ?subjectLabel . }}
             OPTIONAL {{ ?subjectIri rdf:type ?subjectType . }}
 
             # actual relation
             ?subjectIri ?predicate ?object .
 
             # object label & type
-            OPTIONAL {{ ?object {self._wrap_uri(RDFS_LABEL)} ?objectLabel . }}
+            OPTIONAL {{ ?object {_wrap_uri(RDFS_LABEL)} ?objectLabel . }}
             OPTIONAL {{ ?object rdf:type ?objectType . }}
         }}
         """.strip()
@@ -353,89 +424,21 @@ class SPARQLBuilder:
 
         # optional additional subject properties
         for prop in optional_props:
-            var = self._get_var_name(prop)
+            var = _get_var_name(prop)
             select_vars += f" ?{var}"
-            optional_clauses += f"OPTIONAL {{ ?subjectIri {self._wrap_uri(prop)} ?{var} . }}\n"
+            optional_clauses += f"OPTIONAL {{ ?subjectIri {_wrap_uri(prop)} ?{var} . }}\n"
 
         return (
             self.prefixes
             + f"""
         SELECT DISTINCT {select_vars} WHERE {{
-            ?subjectIri {self._wrap_uri(predicate_uri)} {self._wrap_uri(object_uri)} .
+            ?subjectIri {_wrap_uri(predicate_uri)} {_wrap_uri(object_uri)} .
 
             # Bind predicate + object so they appear as columns
-            BIND({self._wrap_uri(predicate_uri)} AS ?predicate)
-            BIND({self._wrap_uri(object_uri)} AS ?object)
+            BIND({_wrap_uri(predicate_uri)} AS ?predicate)
+            BIND({_wrap_uri(object_uri)} AS ?object)
 
             {optional_clauses}
         }}
         """.strip()
         )
-
-    def _wrap_uri(self, uri: str) -> str:
-        """Wrap a full IRI in SPARQL angle brackets.
-
-        If `uri` is already wrapped as `<...>`, it is returned unchanged.
-
-        Args:
-            uri: Full IRI string (e.g., "https://example.org/foo") or a string
-                already wrapped as "<https://example.org/foo>".
-
-        Returns:
-            The IRI token safe for SPARQL usage, e.g. "<https://example.org/foo>".
-
-        Raises:
-            ValueError: If `uri` is not already wrapped and is not an absolute IRI
-                starting with "http://" or "https://".
-        """
-        # uri may already be <...>
-        if uri.startswith("<") and uri.endswith(">"):
-            return uri
-        # accept only full IRIs here
-        if uri.startswith("http://") or uri.startswith("https://"):
-            return f"<{uri}>"
-        raise ValueError(f"_wrap_uri expects a full IRI, got: {uri}")
-
-    def _get_var_name(self, uri: str) -> str:
-        """Derive a SPARQL variable name from a URI/IRI.
-
-        The method extracts the local name (fragment after `#` or last path
-        segment after `/`), normalizes it to a valid SPARQL variable identifier,
-        and falls back to a stable placeholder if needed.
-
-        Normalization rules:
-          - Non-alphanumeric/underscore characters are replaced with underscores.
-          - If the name does not start with a letter or underscore, it is prefixed
-            with "v_".
-          - If the extracted local name is empty, returns "v".
-
-        Args:
-            uri: Full IRI string or wrapped "<...>" form.
-
-        Returns:
-            A variable-safe local name, e.g. "connectedTo" for a property IRI.
-        """
-        # strip angle brackets if present
-        if uri.startswith("<") and uri.endswith(">"):
-            uri = uri[1:-1]
-        local = uri.split("#")[-1].split("/")[-1]
-        local = re.sub(r"[^A-Za-z0-9_]", "_", local)
-        if not re.match(r"^[A-Za-z_]", local):
-            local = f"v_{local}"
-        return local or "v"
-
-    def _escape_literal(self, s: str) -> str:
-        """Escape a Python string for safe use as a SPARQL string literal.
-
-        This performs minimal escaping appropriate for embedding user-provided
-        input into double-quoted SPARQL literals by escaping backslashes and
-        double quotes.
-
-        Args:
-            s: Raw string to embed in a SPARQL literal.
-
-        Returns:
-            The escaped string suitable for insertion into `"..."` in SPARQL.
-        """
-        # minimal safe escaping for string literals
-        return s.replace("\\", "\\\\").replace('"', '\\"')

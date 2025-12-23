@@ -1,5 +1,7 @@
-from messaging.datamodel import *
 from typing import List
+
+from messaging.datamodel import *
+
 
 def generate_read_payload(nodeid_list: List[str]) -> BasePayload:
     return OPCUAReadPayload(
