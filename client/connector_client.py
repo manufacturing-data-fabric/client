@@ -1,5 +1,5 @@
 import logging
-from idlelib.colorizer import matched_named_groups
+#from idlelib.colorizer import matched_named_groups #todo: remove?
 
 from aiokafka import AIOKafkaProducer
 from typing import Type

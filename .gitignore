@@ -1,3 +1,4 @@
 .idea/
 .ipynb_checkpoints/
 **/__pycache__/
+messaging/__pycache__/datamodel.cpython-310.pyc
