@@ -6,17 +6,24 @@ build-backend = "hatchling.build"
 name = "client"
 version = "0.1.0"
 requires_python = ">=3.10"
-license = { text = "LICENSE" } # todo: insert license file to repo
+license = { file = "LICENSE" } # todo: insert license file to repo
 authors = [{ name = "Stephan Trattnig", email = "stephan.trattnig@iwb.tum.de"}]
-repository = "https://gitlab.lrz.de/data-fabric/client.git" # todo: check whether this is the correct one (https vs ssh)
+description = "Python client for interacting with a Knowledge Graph and Kafka-based Connectors"
+
+[project.urls]
+Repository = "https://gitlab.lrz.de/data-fabric/client.git" # todo: check whether this is the correct one (https vs ssh)
 # todo: check which repository to give here: gitlab or github or both?
 
 dependencies = [
-    "aiokafka==0.12.0",
+    "aiohttp>=3.11",
+    "aiokafka>=0.12",
+    "python-dotenv>=1.0",
+    "rdflib>=7.1",
+    "pandas>=2.2",
+    "pydantic>=2.10"
     # todo: check how to display the connector_base module here!
 ]
 
-packages = ["client"] # todo: is this "required"?
 
 [project.optional-dependencies]
 dev = [
@@ -25,7 +32,7 @@ dev = [
     "ruff",
     "mypy",
     "black",
-    "deptry", # todo: what is this for?
+    "deptry",
 ]
 
 [tool.hatch.metadata]
@@ -36,6 +43,8 @@ allow-direct-references = true
 line-length = 100
 exclude = [
     "archive", # todo: check what to exclude here!
+    "connector_base",
+    "docs",
 ]
 
 [tool.ruff.lint]
@@ -53,15 +62,15 @@ docstring-quotes = "double"
 
 [tool.black]
 line-length = 100
-target-verson=["py310"]
-ski-string-normalization = false
+target-version = ["py310"]
+skip-string-normalization = false
 
 [tool.mypy]
 python_version = "3.10"
 strict = true
-ingore_missing_imports = true
+ignore_missing_imports = true
 check_untyped_defs = true
 disallow_untyped_defs = true
 
-[tool.hatch.build]
-# packages = [""] # todo: what to do here?
+[tool.hatch.build.targets.wheel]
+packages = ["client"]

@@ -1,15 +1,15 @@
-import pandas as pd
 import asyncio
-from contextlib import asynccontextmanager
-from connector.messages.datamodel_base import MsgModel
 import json
+from contextlib import asynccontextmanager
 from typing import List
+
+import pandas as pd
 from aiokafka import AIOKafkaConsumer
+from connector.messages.datamodel_base import MsgModel
 
 
 def sparql_results_to_dataframe(bindings: list, simplify: bool = True) -> pd.DataFrame:
-    """
-    Convert SPARQL query JSON bindings to a pandas DataFrame.
+    """Convert SPARQL query JSON bindings to a pandas DataFrame.
 
     Args:
         bindings (list): The 'bindings' list from a SPARQL query result.
@@ -19,12 +19,12 @@ def sparql_results_to_dataframe(bindings: list, simplify: bool = True) -> pd.Dat
         pd.DataFrame: Flattened and optionally simplified DataFrame.
     """
     def strip_uri(val):
-        if isinstance(val, dict) and 'value' in val:
-            value = val['value']
-            if '#' in value:
-                return value.split('#')[-1]
-            elif '/' in value:
-                return value.split('/')[-1]
+        if isinstance(val, dict) and "value" in val:
+            value = val["value"]
+            if "#" in value:
+                return value.split("#")[-1]
+            elif "/" in value:
+                return value.split("/")[-1]
             return value
         return val
 
@@ -42,8 +42,7 @@ def sparql_results_to_dataframe(bindings: list, simplify: bool = True) -> pd.Dat
 
 
 def sparql_results_to_dataframe_old(bindings: list) -> pd.DataFrame:
-    """
-    Convert SPARQL query JSON bindings to a pandas DataFrame.
+    """Convert SPARQL query JSON bindings to a pandas DataFrame.
 
     Args:
         bindings (list): The 'bindings' list from a SPARQL query result.
@@ -83,7 +82,7 @@ async def get_kafka_consumer(topic: str, bootstrap_servers: List[str]):
     consumer = AIOKafkaConsumer(
         topic,
         bootstrap_servers=bootstrap_servers,
-        value_deserializer=lambda m: json.loads(m.decode('utf-8'))
+        value_deserializer=lambda m: json.loads(m.decode("utf-8"))
     )
     await consumer.start()
     try:
@@ -93,12 +92,12 @@ async def get_kafka_consumer(topic: str, bootstrap_servers: List[str]):
 
 def simplify_sparql_results(results):
     def strip_uri(val):
-        if isinstance(val, dict) and 'value' in val:
-            value = val['value']
-            if '#' in value:
-                return value.split('#')[-1]
-            elif '/' in value:
-                return value.split('/')[-1]
+        if isinstance(val, dict) and "value" in val:
+            value = val["value"]
+            if "#" in value:
+                return value.split("#")[-1]
+            elif "/" in value:
+                return value.split("/")[-1]
             return value
         return val
 

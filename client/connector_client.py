@@ -1,18 +1,25 @@
 import logging
-#from idlelib.colorizer import matched_named_groups #todo: remove?
-
-from aiokafka import AIOKafkaProducer # todo: exchange via the KafkaBroker class?
-from typing import Type
 from os import environ
-from dotenv import load_dotenv
-import aiohttp
+from typing import Type
 from uuid import uuid4
 
-from rdflib import URIRef
+import aiohttp
 
+#from idlelib.colorizer import matched_named_groups #todo: remove?
+from aiokafka import AIOKafkaProducer  # todo: exchange via the KafkaBroker class?
+from connector.messages.datamodel_base import (
+    ActionCommand,
+    ReadCommand,
+    SubscribeCommand,
+    UnsubscribeCommand,
+)
+from connector.messages.datamodel_utils import (
+    BasePayload,
+    SubscriptionRegisterRequest,
+    SubscriptionUnregisterRequest,
+)
 from connector.messages.message_generator import create_request
-from connector.messages.datamodel_utils import BasePayload, SubscriptionUnregisterRequest, SubscriptionRegisterRequest
-from connector.messages.datamodel_base import ReadCommand, SubscribeCommand, UnsubscribeCommand, ActionCommand
+from dotenv import load_dotenv
 
 from .connector_client_utils import *
 from .sparql_builder import *
@@ -21,11 +28,14 @@ from .sparql_builder import *
 DF = "http://stephantrattnig.org/data_fabric_ontology#"
 DF_INSTANCE = "http://stephantrattnig.org/instances#"
 RDFS = "http://www.w3.org/2000/01/rdf-schema#"
-from messaging.datamodel import OPCUAReadPayload, \
-    OPCUAWritePayload  # todo: for a protocol-neutral client, this needs to be removed
+import asyncio
 
 import pandas as pd
-import asyncio
+
+from messaging.datamodel import (
+    OPCUAReadPayload,
+    OPCUAWritePayload,  # todo: for a protocol-neutral client, this needs to be removed
+)
 
 load_dotenv()
 
@@ -48,9 +58,9 @@ class ConnectorClient:
         # initializing with default .env connector
         self.connector_type = environ.get("MODULE_TYPE")
         self.module_id = environ.get("MODULE_ID")
-        self.request_topic = f'request.{self.connector_type}.{self.module_id}'
-        self.response_topic = f'response.{self.connector_type}.{self.module_id}'
-        self.telemetry_topic = f'telemetry.{self.connector_type}.{self.module_id}'
+        self.request_topic = f"request.{self.connector_type}.{self.module_id}"
+        self.response_topic = f"response.{self.connector_type}.{self.module_id}"
+        self.telemetry_topic = f"telemetry.{self.connector_type}.{self.module_id}"
 
         # list of potential connectors
         self.connectors = {}
@@ -98,8 +108,8 @@ class ConnectorClient:
         result = await self.query_graphdb(query, pretty=False)
 
         for connector in result:
-            module_id = connector['moduleId']['value']
-            module_type = connector['moduleType']['value']
+            module_id = connector["moduleId"]["value"]
+            module_type = connector["moduleType"]["value"]
             new_config = {}
             new_config["request"] = f"request.{module_type}.{module_id}"
             new_config["response"] = f"response.{module_type}.{module_id}"
@@ -110,7 +120,7 @@ class ConnectorClient:
     async def _create_producer(self):
         self._logger.info("Creating Kafka producer...")
         self.producer = AIOKafkaProducer(
-            value_serializer=lambda m: m.encode('utf-8'),
+            value_serializer=lambda m: m.encode("utf-8"),
             bootstrap_servers=self.bootstrap_server
         )
         await self.producer.start()
@@ -133,7 +143,7 @@ class ConnectorClient:
 
     # todo: gather read, subscribe, unsubscribe and action request in one method!
     async def publish_read_command(self, base_payload: BasePayload):
-        """ Senad a ReadCommand message to a dedicated request topic"""
+        """Senad a ReadCommand message to a dedicated request topic"""
         self._logger.info(f"Preparing read request for payload: {base_payload}")
         request_message = create_request(base_payload=base_payload, command_type=ReadCommand)
         await self._send_request(dump_payload(request_message), self.request_topic)
@@ -141,13 +151,12 @@ class ConnectorClient:
             f"Read request sent to {self.request_topic} with payload: {request_message.model_dump_json(indent=4)}")
 
     async def publish_subscribe_command(self, base_payload: BasePayload):
-        """ Send a Subscription message to a dedicated request topic"""
+        """Send a Subscription message to a dedicated request topic"""
         request_message = create_request(base_payload=base_payload, command_type=SubscribeCommand)
         await self._send_request(dump_payload(request_message), self.request_topic)
 
     async def publish_unsubscribe_command(self, base_payload: BasePayload):
-        """ Unsubscribe to an image feed of an attached camera"""
-
+        """Unsubscribe to an image feed of an attached camera"""
         request_message = create_request(base_payload=base_payload, command_type=UnsubscribeCommand)
         await self._send_request(dump_payload(request_message), self.request_topic)
 
@@ -161,7 +170,6 @@ class ConnectorClient:
 
     async def send_read_and_await_response(self, base_payload: BasePayload, timeout: int = 5):
         """Send a ReadCommand and wait for the matching response."""
-
         # todo: timeout does not work yet!
         if not self.producer:
             await self._create_producer()
@@ -204,7 +212,6 @@ class ConnectorClient:
 
     async def send_subscribe_and_await_response(self, base_payload, timeout: int = 5):
         """Send a subscribe request and return concise, user-friendly feedback."""
-
         if not self.producer:
             await self._create_producer()
 
@@ -331,7 +338,6 @@ class ConnectorClient:
 
     async def resolve_connector_from_datapoint(self, datapoint_uri: str):
         """Resolve all KG information needed for subscription or read"""
-
         # Get DataPoint identifier
         props = await self.get_properties(subject_uri=datapoint_uri, property_uris=[f"{DF}dataPointIdentifier"], pretty=True)
         datapoint_identifier = props.iloc[0]["object"]
@@ -509,8 +515,7 @@ class ConnectorClient:
         return pd.DataFrame(rows)
 
     def get_subscriptions(self):
-        """ Helper method for returning maintained subscriptions by this client"""
-
+        """Helper method for returning maintained subscriptions by this client"""
         # todo: needs to be checked!!!
         subscription_ids = []
         for entry in self.subscriptions:
