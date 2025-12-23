@@ -5,12 +5,63 @@ build-backend = "hatchling.build"
 [project]
 name = "client"
 version = "0.1.0"
-description = "Data Fabric Client"
 requires_python = ">=3.10"
-license = { text = "Apache-2.0" }
+license = { text = "LICENSE" } # todo: insert license file to repo
+authors = [{ name = "Stephan Trattnig", email = "stephan.trattnig@iwb.tum.de"}]
+repository = "https://gitlab.lrz.de/data-fabric/client.git" # todo: check whether this is the correct one (https vs ssh)
+# todo: check which repository to give here: gitlab or github or both?
 
-packages = ["client"]
-
-authors = [
-    { name = "Stephan Trattnig", email = "stephan.trattnig@iwb.tum.de" }
+dependencies = [
+    "aiokafka==0.12.0",
+    # todo: check how to display the connector_base module here!
 ]
+
+packages = ["client"] # todo: is this "required"?
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "ruff",
+    "mypy",
+    "black",
+    "deptry", # todo: what is this for?
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+# linting-related stuff
+[tool.ruff]
+line-length = 100
+exclude = [
+    "archive", # todo: check what to exclude here!
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "ANN", "D", "PL"]
+extend-select = ["Q"]
+ignore = ["D100", "D104"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "double"
+multiline-quotes = "double"
+docstring-quotes = "double"
+
+[tool.black]
+line-length = 100
+target-verson=["py310"]
+ski-string-normalization = false
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ingore_missing_imports = true
+check_untyped_defs = true
+disallow_untyped_defs = true
+
+[tool.hatch.build]
+# packages = [""] # todo: what to do here?

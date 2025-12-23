@@ -1,7 +1,7 @@
 import logging
 #from idlelib.colorizer import matched_named_groups #todo: remove?
 
-from aiokafka import AIOKafkaProducer
+from aiokafka import AIOKafkaProducer # todo: exchange via the KafkaBroker class?
 from typing import Type
 from os import environ
 from dotenv import load_dotenv
@@ -561,7 +561,7 @@ class ConnectorClient:
         return await self.query_graphdb(query, pretty=pretty)
 
     async def get_related_inverse(self, object_uri: str, predicate_uri: str, optional_props: list[str] = None, pretty=False):
-        query = self.builder.build_get_related_inverse_query(object_uri, predicate_uri, optional_props)
+        query = self.builder. build_get_related_inverse_query(object_uri, predicate_uri, optional_props)
         return await self.query_graphdb(query, pretty=pretty)
 
     async def search_entity(self, keyword: str, class_uri: str = None, property_uri: str = "rdfs:label",
