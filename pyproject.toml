@@ -10,10 +10,6 @@ license = { file = "LICENSE" } # todo: insert license file to repo
 authors = [{ name = "Stephan Trattnig", email = "stephan.trattnig@iwb.tum.de"}]
 description = "Python client for interacting with a Knowledge Graph and Kafka-based Connectors"
 
-[project.urls]
-Repository = "https://gitlab.lrz.de/data-fabric/client.git" # todo: check whether this is the correct one (https vs ssh)
-# todo: check which repository to give here: gitlab or github or both?
-
 dependencies = [
     "aiohttp>=3.11",
     "aiokafka>=0.12",
@@ -24,6 +20,9 @@ dependencies = [
     # todo: check how to display the connector_base module here!
 ]
 
+[project.urls]
+Repository = "https://gitlab.lrz.de/data-fabric/client.git" # todo: check whether this is the correct one (https vs ssh)
+# todo: check which repository to give here: gitlab or github or both?
 
 [project.optional-dependencies]
 dev = [
