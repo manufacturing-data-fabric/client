@@ -145,25 +145,26 @@ class ConnectorClient:
     async def publish_read_command(self, base_payload: BasePayload):
         """Senad a ReadCommand message to a dedicated request topic"""
         self._logger.info(f"Preparing read request for payload: {base_payload}")
-        request_message = create_request(base_payload=base_payload, command_type=ReadCommand)
+        request_message = create_request(base_payload=base_payload, command_cls=ReadCommand)
         await self._send_request(dump_payload(request_message), self.request_topic)
         self._logger.info(
             f"Read request sent to {self.request_topic} with payload: {request_message.model_dump_json(indent=4)}")
 
     async def publish_subscribe_command(self, base_payload: BasePayload):
         """Send a Subscription message to a dedicated request topic"""
-        request_message = create_request(base_payload=base_payload, command_type=SubscribeCommand)
+        request_message = create_request(base_payload=base_payload, command_cls=SubscribeCommand)
         await self._send_request(dump_payload(request_message), self.request_topic)
 
     async def publish_unsubscribe_command(self, base_payload: BasePayload):
         """Unsubscribe to an image feed of an attached camera"""
-        request_message = create_request(base_payload=base_payload, command_type=UnsubscribeCommand)
+        request_message = create_request(base_payload=base_payload, command_cls=UnsubscribeCommand)
         await self._send_request(dump_payload(request_message), self.request_topic)
 
     async def publish_action_command(self, base_payload: BasePayload):
         self._logger.info(f"Preparing trigger action request for payload: {base_payload}")
 
-        request_message = create_request(base_payload=base_payload, command_type=ActionCommand)
+        #request_message = create_request(base_payload=base_payload, command_type=ActionCommand)
+        request_message = create_request(base_payload=base_payload, command_cls=ActionCommand)
         await self._send_request(dump_payload(request_message), self.request_topic)
 
         self._logger.info(f"Trigger action request sent to {self.request_topic} with payload: {request_message.model_dump_json(indent=4)}")
