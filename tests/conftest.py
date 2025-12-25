@@ -1,11 +1,9 @@
 """Shared pytest fixtures and mocks for client tests."""
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-
 
 # =============================================================================
 # Environment Variable Fixtures
@@ -210,7 +208,7 @@ def sample_kafka_response(sample_correlation_id):
 @pytest.fixture
 def connector_client(mock_env, mock_kafka_producer):
     """Create a ConnectorClient with mocked Kafka producer."""
-    with patch('client.connector_client.AIOKafkaProducer', return_value=mock_kafka_producer):
+    with patch("client.connector_client.AIOKafkaProducer", return_value=mock_kafka_producer):
         from client.connector_client import ConnectorClient
         client = ConnectorClient(bootstrap_servers=["localhost:9092"])
         client.producer = mock_kafka_producer

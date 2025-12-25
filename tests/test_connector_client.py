@@ -3,7 +3,7 @@
 These tests require mocking Kafka and GraphDB dependencies.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -98,7 +98,7 @@ class TestKafkaProducerLifecycle:
     @pytest.mark.asyncio
     async def test_create_producer(self, mock_env, mock_kafka_producer):
         """Producer should be created and started."""
-        with patch('client.connector_client.AIOKafkaProducer', return_value=mock_kafka_producer):
+        with patch("client.connector_client.AIOKafkaProducer", return_value=mock_kafka_producer):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
             await client._create_producer()
 
@@ -130,7 +130,7 @@ class TestPublishCommands:
     @pytest.mark.asyncio
     async def test_publish_read_command(self, mock_env, mock_kafka_producer):
         """publish_read_command should send ReadCommand to request topic."""
-        with patch('client.connector_client.AIOKafkaProducer', return_value=mock_kafka_producer):
+        with patch("client.connector_client.AIOKafkaProducer", return_value=mock_kafka_producer):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
 
             # Create a mock payload
@@ -143,12 +143,12 @@ class TestPublishCommands:
             mock_kafka_producer.send_and_wait.assert_called_once()
 
             call_kwargs = mock_kafka_producer.send_and_wait.call_args.kwargs
-            assert call_kwargs['topic'] == "request.test_connector.test_001"
+            assert call_kwargs["topic"] == "request.test_connector.test_001"
 
     @pytest.mark.asyncio
     async def test_publish_subscribe_command(self, mock_env, mock_kafka_producer):
         """publish_subscribe_command should send SubscribeCommand."""
-        with patch('client.connector_client.AIOKafkaProducer', return_value=mock_kafka_producer):
+        with patch("client.connector_client.AIOKafkaProducer", return_value=mock_kafka_producer):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
 
             mock_payload = MagicMock()
@@ -160,7 +160,7 @@ class TestPublishCommands:
     @pytest.mark.asyncio
     async def test_publish_unsubscribe_command(self, mock_env, mock_kafka_producer):
         """publish_unsubscribe_command should send UnsubscribeCommand."""
-        with patch('client.connector_client.AIOKafkaProducer', return_value=mock_kafka_producer):
+        with patch("client.connector_client.AIOKafkaProducer", return_value=mock_kafka_producer):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
 
             mock_payload = MagicMock()
@@ -172,7 +172,7 @@ class TestPublishCommands:
     @pytest.mark.asyncio
     async def test_publish_action_command(self, mock_env, mock_kafka_producer):
         """publish_action_command should send ActionCommand."""
-        with patch('client.connector_client.AIOKafkaProducer', return_value=mock_kafka_producer):
+        with patch("client.connector_client.AIOKafkaProducer", return_value=mock_kafka_producer):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
 
             mock_payload = MagicMock()
@@ -190,7 +190,7 @@ class TestQueryGraphDB:
         """query_graphdb should return raw bindings when pretty=False."""
         session = mock_aiohttp_session(sample_sparql_bindings)
 
-        with patch('aiohttp.ClientSession', return_value=session):
+        with patch("aiohttp.ClientSession", return_value=session):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
             result = await client.query_graphdb("SELECT * WHERE { ?s ?p ?o }", pretty=False)
 
@@ -201,7 +201,7 @@ class TestQueryGraphDB:
         """query_graphdb should return DataFrame when pretty=True."""
         session = mock_aiohttp_session(sample_sparql_bindings)
 
-        with patch('aiohttp.ClientSession', return_value=session):
+        with patch("aiohttp.ClientSession", return_value=session):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
             result = await client.query_graphdb("SELECT * WHERE { ?s ?p ?o }", pretty=True)
 
@@ -213,7 +213,7 @@ class TestQueryGraphDB:
         """query_graphdb should return empty list on HTTP error."""
         session = mock_aiohttp_session([], status=400)
 
-        with patch('aiohttp.ClientSession', return_value=session):
+        with patch("aiohttp.ClientSession", return_value=session):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
             result = await client.query_graphdb("INVALID QUERY", pretty=False)
 
@@ -228,7 +228,7 @@ class TestGraphDBQueryIntents:
         """get_all_classes should return class bindings."""
         session = mock_aiohttp_session(sample_class_bindings)
 
-        with patch('aiohttp.ClientSession', return_value=session):
+        with patch("aiohttp.ClientSession", return_value=session):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
             result = await client.get_all_classes(pretty=False)
 
@@ -239,7 +239,7 @@ class TestGraphDBQueryIntents:
         """list_instances should query instances of a class."""
         session = mock_aiohttp_session(sample_sparql_bindings)
 
-        with patch('aiohttp.ClientSession', return_value=session):
+        with patch("aiohttp.ClientSession", return_value=session):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
             result = await client.list_instances(
                 "http://example.org/ontology#Device",
@@ -253,7 +253,7 @@ class TestGraphDBQueryIntents:
         """list_instances should support optional properties."""
         session = mock_aiohttp_session(sample_sparql_bindings)
 
-        with patch('aiohttp.ClientSession', return_value=session):
+        with patch("aiohttp.ClientSession", return_value=session):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
             result = await client.list_instances(
                 "http://example.org/ontology#Device",
@@ -268,7 +268,7 @@ class TestGraphDBQueryIntents:
         """get_properties should return subject properties."""
         session = mock_aiohttp_session(sample_properties_bindings)
 
-        with patch('aiohttp.ClientSession', return_value=session):
+        with patch("aiohttp.ClientSession", return_value=session):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
             result = await client.get_properties(
                 "http://example.org/instances#Device1",
@@ -282,7 +282,7 @@ class TestGraphDBQueryIntents:
         """get_related should follow predicate to related objects."""
         session = mock_aiohttp_session(sample_sparql_bindings)
 
-        with patch('aiohttp.ClientSession', return_value=session):
+        with patch("aiohttp.ClientSession", return_value=session):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
             result = await client.get_related(
                 "http://example.org/instances#Device1",
@@ -297,7 +297,7 @@ class TestGraphDBQueryIntents:
         """get_related_inverse should find subjects pointing to object."""
         session = mock_aiohttp_session(sample_sparql_bindings)
 
-        with patch('aiohttp.ClientSession', return_value=session):
+        with patch("aiohttp.ClientSession", return_value=session):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
             result = await client.get_related_inverse(
                 "http://example.org/instances#DataPoint1",
@@ -312,7 +312,7 @@ class TestGraphDBQueryIntents:
         """search_entity should search by keyword."""
         session = mock_aiohttp_session(sample_sparql_bindings)
 
-        with patch('aiohttp.ClientSession', return_value=session):
+        with patch("aiohttp.ClientSession", return_value=session):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
             # Use full IRI for property_uri (the default "rdfs:label" is a prefixed name)
             result = await client.search_entity(
@@ -332,7 +332,7 @@ class TestLoadConnectorConfig:
         """load_connector_config should populate connectors dict."""
         session = mock_aiohttp_session(sample_connector_bindings)
 
-        with patch('aiohttp.ClientSession', return_value=session):
+        with patch("aiohttp.ClientSession", return_value=session):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
             await client.load_connector_config()
 
@@ -350,7 +350,7 @@ class TestSyncWrappers:
         """query_graphdb_sync should call async version."""
         session = mock_aiohttp_session(sample_sparql_bindings)
 
-        with patch('aiohttp.ClientSession', return_value=session):
+        with patch("aiohttp.ClientSession", return_value=session):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
             result = client.query_graphdb_sync("SELECT * WHERE { ?s ?p ?o }", pretty=False)
 
@@ -360,7 +360,7 @@ class TestSyncWrappers:
         """get_all_classes_sync should return class bindings."""
         session = mock_aiohttp_session(sample_class_bindings)
 
-        with patch('aiohttp.ClientSession', return_value=session):
+        with patch("aiohttp.ClientSession", return_value=session):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
             result = client.get_all_classes_sync()
 
@@ -370,7 +370,7 @@ class TestSyncWrappers:
         """list_instances_sync should query instances."""
         session = mock_aiohttp_session(sample_sparql_bindings)
 
-        with patch('aiohttp.ClientSession', return_value=session):
+        with patch("aiohttp.ClientSession", return_value=session):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
             result = client.list_instances_sync("http://example.org/ontology#Device")
 
@@ -380,7 +380,7 @@ class TestSyncWrappers:
         """load_connector_config_sync should populate connectors."""
         session = mock_aiohttp_session(sample_connector_bindings)
 
-        with patch('aiohttp.ClientSession', return_value=session):
+        with patch("aiohttp.ClientSession", return_value=session):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
             client.load_connector_config_sync()
 

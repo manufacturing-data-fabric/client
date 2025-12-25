@@ -3,7 +3,6 @@
 import asyncio
 
 import pandas as pd
-import pytest
 
 from client.connector_client_utils import (
     dump_payload,
