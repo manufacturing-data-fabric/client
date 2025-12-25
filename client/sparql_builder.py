@@ -161,9 +161,9 @@ class SPARQLBuilder:
         return f"""
         {self.prefixes}
 
-        SELECT DISTINCT {' '.join(select_vars)} WHERE {{
+        SELECT DISTINCT {" ".join(select_vars)} WHERE {{
             ?entityIri a {_wrap_uri(class_uri)} .
-            {' '.join(optional_blocks)}
+            {" ".join(optional_blocks)}
         }}
         """.strip()
 
@@ -304,8 +304,7 @@ class SPARQLBuilder:
             score_binding = "BIND(1.0 AS ?matchScore)"
         elif match_mode == "exact":
             filter_clause = (
-                f"?entityIri {_wrap_uri(prop)} ?matchLiteral .\n"
-                f'FILTER(STR(?matchLiteral) = "{kw}")'
+                f'?entityIri {_wrap_uri(prop)} ?matchLiteral .\nFILTER(STR(?matchLiteral) = "{kw}")'
             )
             score_binding = "BIND(1.0 AS ?matchScore)"
         else:
@@ -412,7 +411,7 @@ class SPARQLBuilder:
 
         # Add object label/type so output aligns with get_related
         select_vars = (
-            "?subjectIri ?subjectLabel ?subjectType " "?predicate ?object ?objectLabel ?objectType"
+            "?subjectIri ?subjectLabel ?subjectType ?predicate ?object ?objectLabel ?objectType"
         )
 
         optional_clauses = """

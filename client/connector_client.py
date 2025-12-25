@@ -6,38 +6,30 @@ from uuid import uuid4
 
 import aiohttp
 import pandas as pd
-from aiokafka import AIOKafkaProducer  # todo: exchange via the KafkaBroker class?
-from connector.messages.datamodel_base import (
-    ActionCommand,
-    MsgModel,
-    ReadCommand,
-    SubscribeCommand,
-    UnsubscribeCommand,
-)
-from connector.messages.datamodel_utils import (
-    BasePayload,
-    SubscriptionRegisterRequest,
-    SubscriptionUnregisterRequest,
-)
+from aiokafka import \
+    AIOKafkaProducer  # todo: exchange via the KafkaBroker class?
+from connector.messages.datamodel_base import (ActionCommand, MsgModel,
+                                               ReadCommand, SubscribeCommand,
+                                               UnsubscribeCommand)
+from connector.messages.datamodel_utils import (BasePayload,
+                                                SubscriptionRegisterRequest,
+                                                SubscriptionUnregisterRequest)
 from connector.messages.message_generator import create_request
 from dotenv import load_dotenv
 
-from client.connector_client_utils import (
-    dump_payload,
-    get_kafka_consumer,
-    run_async_in_sync,
-    sparql_results_to_dataframe,
-)
+from client.connector_client_utils import (dump_payload, get_kafka_consumer,
+                                           run_async_in_sync,
+                                           sparql_results_to_dataframe)
 from client.sparql_builder import SPARQLBuilder
-from messaging.datamodel import (
-    OPCUAReadPayload,
-    OPCUAWritePayload,  # todo: for a protocol-neutral client, this needs to be removed
-)
+from messaging.datamodel import (  # todo: for a protocol-neutral client, this needs to be removed
+    OPCUAReadPayload, OPCUAWritePayload)
 
 # Namespace constants (until namespace_resolver is integrated)
 DF = "http://stephantrattnig.org/data_fabric_ontology#"
 DF_INSTANCE = "http://stephantrattnig.org/instances#"
 RDFS = "http://www.w3.org/2000/01/rdf-schema#"
+EXPECTED_SUBSCRIBE_RESPONSES = 2
+HTTP_OK_STATUS = 200
 
 load_dotenv()
 
@@ -214,7 +206,7 @@ class ConnectorClient:
             await self._send_request(dump_payload(request_message), self.request_topic)
             await self.close()
 
-            async def wait_for_response():
+            async def wait_for_response() -> Optional[BasePayload]:
                 async for message in consumer:
                     msg = MsgModel.model_validate(message.value)
                     if msg.root.correlation_id == correlation_id:
@@ -263,7 +255,7 @@ class ConnectorClient:
 
             matched_responses = []
 
-            async def wait_for_response():
+            async def wait_for_response() -> None:
                 async for message in consumer:
                     msg = MsgModel.model_validate(message.value)
                     if msg.root.correlation_id == correlation_id:
@@ -273,7 +265,7 @@ class ConnectorClient:
                         self._logger.debug(
                             f"Message payload: {base_payload.model_dump_json(indent=2)}"
                         )
-                        if len(matched_responses) == 2:
+                        if len(matched_responses) == EXPECTED_SUBSCRIBE_RESPONSES:
                             break
 
             try:
@@ -316,7 +308,7 @@ class ConnectorClient:
 
             matched_responses = []
 
-            async def wait_for_response():
+            async def wait_for_response() -> None:
                 async for message in consumer:
                     msg = MsgModel.model_validate(message.value)
                     if msg.root.correlation_id == correlation_id:
@@ -326,7 +318,7 @@ class ConnectorClient:
                         self._logger.debug(
                             f"Message payload: {base_payload.model_dump_json(indent=2)}"
                         )
-                        if len(matched_responses) == 2:
+                        if len(matched_responses) == EXPECTED_SUBSCRIBE_RESPONSES:
                             break
 
             try:
@@ -361,7 +353,7 @@ class ConnectorClient:
             await self._send_request(dump_payload(request_message), self.request_topic)
             await self.close()
 
-            async def wait_for_response():
+            async def wait_for_response() -> Optional[BasePayload]:
                 async for message in consumer:
                     msg = MsgModel.model_validate(message.value)
                     if msg.root.correlation_id == correlation_id:
@@ -559,45 +551,10 @@ class ConnectorClient:
         self, subscription_id: str, duration: int = 10
     ) -> Optional[pd.DataFrame]:
         """Collect data from an existing subscription stream (deprecated)."""
-        collected_data = []
-        # TODO: build_subscription_by_id_query is not defined - this method needs fixing
-        result = await self.query_graphdb(
-            build_subscription_by_id_query((subscription_id))
-        )  # noqa: F821
-
-        # check if the subscription is there
-        if result is None:
-            return
-        # check if the subscription is closed
-
-        # todo: subscribe_from_stream
-        async with get_kafka_consumer(self.telemetry_topic, self.bootstrap_server) as consumer:
-            start_time = asyncio.get_event_loop().time()
-            async for message in consumer:
-                msg = MsgModel.model_validate(message.value)
-                payload = msg.root.payload.base_payload
-
-                if str(payload.subscription_id) != subscription_id:
-                    continue
-
-                collected_data.append(payload)
-
-                if asyncio.get_event_loop().time() - start_time > duration:
-                    break
-
-        # Convert collected data to DataFrame
-        rows = []
-        for payload in collected_data:
-            for nodeid, value in payload.values.items():
-                rows.append(
-                    {
-                        "timestamp": payload.timestamp,
-                        "nodeid": nodeid,
-                        "value": value,
-                    }
-                )
-
-        return pd.DataFrame(rows)
+        self._logger.warning(
+            "collect_data_from_stream is deprecated and requires a subscription query builder."
+        )
+        return None
 
     def get_subscriptions(self) -> List[Dict[str, Any]]:
         """Return maintained subscriptions by this client."""
@@ -623,7 +580,7 @@ class ConnectorClient:
             data = {"query": query}
 
             async with session.post(self.sparql_endpoint, headers=headers, data=data) as response:
-                if response.status == 200:
+                if response.status == HTTP_OK_STATUS:
                     result = await response.json()
                     if pretty:
                         return sparql_results_to_dataframe(result["results"]["bindings"])

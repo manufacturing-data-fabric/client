@@ -1,17 +1,8 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
-from typing import (
-    Any,
-    AsyncIterator,
-    Awaitable,
-    Callable,
-    Dict,
-    Iterable,
-    List,
-    Mapping,
-    TypeVar,
-)
+from typing import (Any, AsyncIterator, Awaitable, Callable, Dict, Iterable,
+                    List, Mapping, TypeVar)
 
 import pandas as pd
 from aiokafka import AIOKafkaConsumer
@@ -20,7 +11,7 @@ from connector.messages.datamodel_base import MsgModel
 T = TypeVar("T")
 
 
-def _strip_uri(value: Any) -> Any:
+def _strip_uri(value: object) -> object:
     """Strip URI prefixes from a SPARQL value dict or return value unchanged.
 
     This helper expects SPARQL JSON result values of the form::
@@ -34,8 +25,10 @@ def _strip_uri(value: Any) -> Any:
         The simplified string (last fragment after '#' or '/'), or the original
         value if it cannot be simplified.
     """
-    if isinstance(value, dict) and "value" in value:
+    if isinstance(value, Mapping) and "value" in value:
         val_str = value["value"]
+        if not isinstance(val_str, str):
+            return value
         if "#" in val_str:
             return val_str.split("#")[-1]
         if "/" in val_str:
@@ -86,8 +79,8 @@ def sparql_results_to_dataframe(
 
 def run_async_in_sync(
     async_func: Callable[..., Awaitable[T]],
-    *args: Any,
-    **kwargs: Any,
+    *args: object,
+    **kwargs: object,
 ) -> T:
     """Run an async function from synchronous code.
 

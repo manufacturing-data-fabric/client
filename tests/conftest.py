@@ -9,6 +9,7 @@ import pytest
 # Environment Variable Fixtures
 # =============================================================================
 
+
 @pytest.fixture
 def mock_env(monkeypatch):
     """Set up test environment variables."""
@@ -21,6 +22,7 @@ def mock_env(monkeypatch):
 # =============================================================================
 # Kafka Mocks
 # =============================================================================
+
 
 @pytest.fixture
 def mock_kafka_producer():
@@ -73,8 +75,10 @@ class MockKafkaConsumer:
 @pytest.fixture
 def mock_kafka_consumer_factory():
     """Factory to create mock Kafka consumers with specific messages."""
+
     def _create(messages: list[dict] = None):
         return MockKafkaConsumer(messages)
+
     return _create
 
 
@@ -82,23 +86,25 @@ def mock_kafka_consumer_factory():
 # GraphDB / aiohttp Mocks
 # =============================================================================
 
+
 @pytest.fixture
 def mock_graphdb_response():
     """Create a mock aiohttp response for GraphDB queries."""
+
     def _create(bindings: list, status: int = 200):
         mock_response = AsyncMock()
         mock_response.status = status
-        mock_response.json = AsyncMock(return_value={
-            "results": {"bindings": bindings}
-        })
+        mock_response.json = AsyncMock(return_value={"results": {"bindings": bindings}})
         mock_response.text = AsyncMock(return_value="Error")
         return mock_response
+
     return _create
 
 
 @pytest.fixture
 def mock_aiohttp_session(mock_graphdb_response):
     """Mock aiohttp.ClientSession for GraphDB SPARQL queries."""
+
     def _create(bindings: list, status: int = 200):
         response = mock_graphdb_response(bindings, status)
 
@@ -117,12 +123,14 @@ def mock_aiohttp_session(mock_graphdb_response):
         mock_session_cm.__aexit__ = AsyncMock(return_value=None)
 
         return mock_session_cm
+
     return _create
 
 
 # =============================================================================
 # Sample Test Data
 # =============================================================================
+
 
 @pytest.fixture
 def sample_sparql_bindings():
@@ -131,13 +139,13 @@ def sample_sparql_bindings():
         {
             "entityIri": {"type": "uri", "value": "http://example.org/instances#Entity1"},
             "entityLabel": {"type": "literal", "value": "Entity One"},
-            "entityType": {"type": "uri", "value": "http://example.org/ontology#MyClass"}
+            "entityType": {"type": "uri", "value": "http://example.org/ontology#MyClass"},
         },
         {
             "entityIri": {"type": "uri", "value": "http://example.org/instances#Entity2"},
             "entityLabel": {"type": "literal", "value": "Entity Two"},
-            "entityType": {"type": "uri", "value": "http://example.org/ontology#MyClass"}
-        }
+            "entityType": {"type": "uri", "value": "http://example.org/ontology#MyClass"},
+        },
     ]
 
 
@@ -147,7 +155,7 @@ def sample_class_bindings():
     return [
         {"class": {"type": "uri", "value": "http://example.org/ontology#Device"}},
         {"class": {"type": "uri", "value": "http://example.org/ontology#Connector"}},
-        {"class": {"type": "uri", "value": "http://example.org/ontology#DataPoint"}}
+        {"class": {"type": "uri", "value": "http://example.org/ontology#DataPoint"}},
     ]
 
 
@@ -160,7 +168,7 @@ def sample_properties_bindings():
             "subjectType": {"type": "uri", "value": "http://example.org/ontology#Device"},
             "predicate": {"type": "uri", "value": "http://www.w3.org/2000/01/rdf-schema#label"},
             "object": {"type": "literal", "value": "Device One"},
-            "subjectLabel": {"type": "literal", "value": "Device One"}
+            "subjectLabel": {"type": "literal", "value": "Device One"},
         }
     ]
 
@@ -173,7 +181,7 @@ def sample_connector_bindings():
             "entityIri": {"type": "uri", "value": "http://example.org/instances#Connector1"},
             "entityLabel": {"type": "literal", "value": "OPC UA Connector"},
             "moduleId": {"type": "literal", "value": "opcua_connector_001"},
-            "moduleType": {"type": "literal", "value": "opcua"}
+            "moduleType": {"type": "literal", "value": "opcua"},
         }
     ]
 
@@ -193,11 +201,8 @@ def sample_kafka_response(sample_correlation_id):
         "correlation_id": sample_correlation_id,
         "payload": {
             "command_type": "response",
-            "base_payload": {
-                "device_origin": "test_connector",
-                "value_dict": {"node1": 42}
-            }
-        }
+            "base_payload": {"device_origin": "test_connector", "value_dict": {"node1": 42}},
+        },
     }
 
 
@@ -205,11 +210,13 @@ def sample_kafka_response(sample_correlation_id):
 # ConnectorClient Fixture with Mocks
 # =============================================================================
 
+
 @pytest.fixture
 def connector_client(mock_env, mock_kafka_producer):
     """Create a ConnectorClient with mocked Kafka producer."""
     with patch("client.connector_client.AIOKafkaProducer", return_value=mock_kafka_producer):
         from client.connector_client import ConnectorClient
+
         client = ConnectorClient(bootstrap_servers=["localhost:9092"])
         client.producer = mock_kafka_producer
         yield client

@@ -59,7 +59,7 @@ class TestConnectorSwitching:
             "other_connector": {
                 "request": "request.other.001",
                 "response": "response.other.001",
-                "telemetry": "telemetry.other.001"
+                "telemetry": "telemetry.other.001",
             }
         }
 
@@ -81,10 +81,7 @@ class TestConnectorSwitching:
     def test_return_connectors(self, mock_env):
         """return_connectors should return connector keys."""
         client = ConnectorClient(bootstrap_servers=["localhost:9092"])
-        client.connectors = {
-            "connector_a": {},
-            "connector_b": {}
-        }
+        client.connectors = {"connector_a": {}, "connector_b": {}}
 
         keys = list(client.return_connectors())
 
@@ -186,7 +183,9 @@ class TestQueryGraphDB:
     """Tests for GraphDB query methods."""
 
     @pytest.mark.asyncio
-    async def test_query_graphdb_success_raw(self, mock_env, mock_aiohttp_session, sample_sparql_bindings):
+    async def test_query_graphdb_success_raw(
+        self, mock_env, mock_aiohttp_session, sample_sparql_bindings
+    ):
         """query_graphdb should return raw bindings when pretty=False."""
         session = mock_aiohttp_session(sample_sparql_bindings)
 
@@ -197,7 +196,9 @@ class TestQueryGraphDB:
             assert result == sample_sparql_bindings
 
     @pytest.mark.asyncio
-    async def test_query_graphdb_success_pretty(self, mock_env, mock_aiohttp_session, sample_sparql_bindings):
+    async def test_query_graphdb_success_pretty(
+        self, mock_env, mock_aiohttp_session, sample_sparql_bindings
+    ):
         """query_graphdb should return DataFrame when pretty=True."""
         session = mock_aiohttp_session(sample_sparql_bindings)
 
@@ -241,15 +242,14 @@ class TestGraphDBQueryIntents:
 
         with patch("aiohttp.ClientSession", return_value=session):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
-            result = await client.list_instances(
-                "http://example.org/ontology#Device",
-                pretty=False
-            )
+            result = await client.list_instances("http://example.org/ontology#Device", pretty=False)
 
             assert len(result) == 2
 
     @pytest.mark.asyncio
-    async def test_list_instances_with_optional_props(self, mock_env, mock_aiohttp_session, sample_sparql_bindings):
+    async def test_list_instances_with_optional_props(
+        self, mock_env, mock_aiohttp_session, sample_sparql_bindings
+    ):
         """list_instances should support optional properties."""
         session = mock_aiohttp_session(sample_sparql_bindings)
 
@@ -258,7 +258,7 @@ class TestGraphDBQueryIntents:
             result = await client.list_instances(
                 "http://example.org/ontology#Device",
                 optional_props=["http://example.org/ontology#status"],
-                pretty=False
+                pretty=False,
             )
 
             assert len(result) == 2
@@ -271,8 +271,7 @@ class TestGraphDBQueryIntents:
         with patch("aiohttp.ClientSession", return_value=session):
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
             result = await client.get_properties(
-                "http://example.org/instances#Device1",
-                pretty=False
+                "http://example.org/instances#Device1", pretty=False
             )
 
             assert len(result) == 1
@@ -287,13 +286,15 @@ class TestGraphDBQueryIntents:
             result = await client.get_related(
                 "http://example.org/instances#Device1",
                 "http://example.org/ontology#hasDataPoint",
-                pretty=False
+                pretty=False,
             )
 
             assert len(result) == 2
 
     @pytest.mark.asyncio
-    async def test_get_related_inverse(self, mock_env, mock_aiohttp_session, sample_sparql_bindings):
+    async def test_get_related_inverse(
+        self, mock_env, mock_aiohttp_session, sample_sparql_bindings
+    ):
         """get_related_inverse should find subjects pointing to object."""
         session = mock_aiohttp_session(sample_sparql_bindings)
 
@@ -302,7 +303,7 @@ class TestGraphDBQueryIntents:
             result = await client.get_related_inverse(
                 "http://example.org/instances#DataPoint1",
                 "http://example.org/ontology#hasDataPoint",
-                pretty=False
+                pretty=False,
             )
 
             assert len(result) == 2
@@ -316,9 +317,7 @@ class TestGraphDBQueryIntents:
             client = ConnectorClient(bootstrap_servers=["localhost:9092"])
             # Use full IRI for property_uri (the default "rdfs:label" is a prefixed name)
             result = await client.search_entity(
-                "Entity",
-                property_uri="http://www.w3.org/2000/01/rdf-schema#label",
-                pretty=False
+                "Entity", property_uri="http://www.w3.org/2000/01/rdf-schema#label", pretty=False
             )
 
             assert len(result) == 2
@@ -328,7 +327,9 @@ class TestLoadConnectorConfig:
     """Tests for load_connector_config method."""
 
     @pytest.mark.asyncio
-    async def test_load_connector_config(self, mock_env, mock_aiohttp_session, sample_connector_bindings):
+    async def test_load_connector_config(
+        self, mock_env, mock_aiohttp_session, sample_connector_bindings
+    ):
         """load_connector_config should populate connectors dict."""
         session = mock_aiohttp_session(sample_connector_bindings)
 
@@ -376,7 +377,9 @@ class TestSyncWrappers:
 
             assert len(result) == 2
 
-    def test_load_connector_config_sync(self, mock_env, mock_aiohttp_session, sample_connector_bindings):
+    def test_load_connector_config_sync(
+        self, mock_env, mock_aiohttp_session, sample_connector_bindings
+    ):
         """load_connector_config_sync should populate connectors."""
         session = mock_aiohttp_session(sample_connector_bindings)
 
