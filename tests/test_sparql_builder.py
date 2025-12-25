@@ -5,12 +5,7 @@ These tests are pure unit tests with no external dependencies.
 
 import pytest
 
-from client.sparql_builder import (
-    SPARQLBuilder,
-    _escape_literal,
-    _get_var_name,
-    _wrap_uri,
-)
+from client.sparql_builder import SPARQLBuilder, _escape_literal, _get_var_name, _wrap_uri
 
 
 class TestWrapUri:
@@ -164,7 +159,7 @@ class TestBuildListInstancesQuery:
         builder = SPARQLBuilder()
         query = builder.build_list_instances_query(
             "http://example.org/MyClass",
-            optional_props=["http://example.org/propA", "http://example.org/propB"]
+            optional_props=["http://example.org/propA", "http://example.org/propB"],
         )
 
         assert "?propA" in query
@@ -183,17 +178,13 @@ class TestBuildListInstancesQuery:
         builder = SPARQLBuilder()
         with pytest.raises(ValueError, match="expects a full IRI"):
             builder.build_list_instances_query(
-                "http://example.org/MyClass",
-                optional_props=["invalidProp"]
+                "http://example.org/MyClass", optional_props=["invalidProp"]
             )
 
     def test_list_instances_empty_optional_props(self):
         """Empty optional_props list should work like None."""
         builder = SPARQLBuilder()
-        query = builder.build_list_instances_query(
-            "http://example.org/MyClass",
-            optional_props=[]
-        )
+        query = builder.build_list_instances_query("http://example.org/MyClass", optional_props=[])
         assert "<http://example.org/MyClass>" in query
 
 
@@ -215,7 +206,7 @@ class TestBuildGetPropertiesQuery:
         builder = SPARQLBuilder()
         query = builder.build_get_properties_query(
             "http://example.org/Subject1",
-            property_uris=["http://example.org/prop1", "http://example.org/prop2"]
+            property_uris=["http://example.org/prop1", "http://example.org/prop2"],
         )
 
         assert "VALUES ?predicate" in query
@@ -260,10 +251,7 @@ class TestBuildSearchEntityQuery:
     def test_search_entity_with_class_filter(self):
         """Query with class filter should include type constraint."""
         builder = SPARQLBuilder()
-        query = builder.build_search_entity_query(
-            "test",
-            class_uri="http://example.org/MyClass"
-        )
+        query = builder.build_search_entity_query("test", class_uri="http://example.org/MyClass")
 
         assert "?entityIri a <http://example.org/MyClass>" in query
 
@@ -303,8 +291,7 @@ class TestBuildGetRelatedQuery:
         """Query should have correct structure."""
         builder = SPARQLBuilder()
         query = builder.build_get_related_query(
-            "http://example.org/Subject1",
-            "http://example.org/relatesTo"
+            "http://example.org/Subject1", "http://example.org/relatesTo"
         )
 
         assert "<http://example.org/Subject1>" in query
@@ -315,8 +302,7 @@ class TestBuildGetRelatedQuery:
         """Query should include BIND statements."""
         builder = SPARQLBuilder()
         query = builder.build_get_related_query(
-            "http://example.org/Subject1",
-            "http://example.org/relatesTo"
+            "http://example.org/Subject1", "http://example.org/relatesTo"
         )
 
         assert "BIND(" in query
@@ -327,8 +313,7 @@ class TestBuildGetRelatedQuery:
         """Query should include optional labels."""
         builder = SPARQLBuilder()
         query = builder.build_get_related_query(
-            "http://example.org/Subject1",
-            "http://example.org/relatesTo"
+            "http://example.org/Subject1", "http://example.org/relatesTo"
         )
 
         assert "?subjectLabel" in query
@@ -342,8 +327,7 @@ class TestBuildGetRelatedInverseQuery:
         """Basic inverse query should have correct triple pattern."""
         builder = SPARQLBuilder()
         query = builder.build_get_related_inverse_query(
-            "http://example.org/Object1",
-            "http://example.org/relatesTo"
+            "http://example.org/Object1", "http://example.org/relatesTo"
         )
 
         # Triple pattern: ?subjectIri <predicate> <object>
@@ -355,7 +339,7 @@ class TestBuildGetRelatedInverseQuery:
         query = builder.build_get_related_inverse_query(
             "http://example.org/Object1",
             "http://example.org/relatesTo",
-            optional_props=["http://example.org/extraProp"]
+            optional_props=["http://example.org/extraProp"],
         )
 
         assert "?extraProp" in query
@@ -365,8 +349,7 @@ class TestBuildGetRelatedInverseQuery:
         """Query should include object label and type columns."""
         builder = SPARQLBuilder()
         query = builder.build_get_related_inverse_query(
-            "http://example.org/Object1",
-            "http://example.org/relatesTo"
+            "http://example.org/Object1", "http://example.org/relatesTo"
         )
 
         assert "?objectLabel" in query
@@ -376,8 +359,7 @@ class TestBuildGetRelatedInverseQuery:
         """Query should use SELECT DISTINCT."""
         builder = SPARQLBuilder()
         query = builder.build_get_related_inverse_query(
-            "http://example.org/Object1",
-            "http://example.org/relatesTo"
+            "http://example.org/Object1", "http://example.org/relatesTo"
         )
 
         assert "SELECT DISTINCT" in query

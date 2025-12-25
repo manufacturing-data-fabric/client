@@ -1,14 +1,22 @@
-.PHONY: lint format test check
+.PHONY: format lint typecheck test check
 
-lint:
-	ruff check .
-	mypy .
-	pydoclint .
-
+# --- auto-formatting tools (rewrite code) ---
 format:
 	black .
+	isort .
+
+# --- static checks (do NOT rewrite code) ---
+lint:
+	ruff check .
+
+typecheck:
+	mypy .
+
+doclint:
+	pydoclint .
 
 test:
 	pytest
 
-check: lint test
+# run everything in the correct order
+check: format lint typecheck doclint test

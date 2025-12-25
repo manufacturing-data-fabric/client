@@ -1,6 +1,7 @@
 ################ Old ##################
 # These are old queries - eventually "remove them sometime, or use them for "hot paths" throughout the query agent
 
+
 # list instances
 def build_all_devices_query():
     """
@@ -24,6 +25,7 @@ def build_all_devices_query():
     }
     """
 
+
 # search entity
 def build_device_by_identifier_query(identifier: str):
     return f"""
@@ -34,6 +36,7 @@ def build_device_by_identifier_query(identifier: str):
         ?device df:deviceIdentifier "{identifier}" .
     }}
     """
+
 
 # get properties
 def build_device_details_query(device_uri: str) -> str:
@@ -55,10 +58,15 @@ WHERE {{
 }}
 """
 
+
 # very specific (but related to get related)
 def build_subscription_query(device_identifier=None, service_uri=None):
-    device_filter = f'?device df:deviceIdentifier "{device_identifier}" .' if device_identifier else '?device df:deviceIdentifier ?identifier .'
-    service_filter = f'FILTER (?service = <{service_uri}>)' if service_uri else ''
+    device_filter = (
+        f'?device df:deviceIdentifier "{device_identifier}" .'
+        if device_identifier
+        else "?device df:deviceIdentifier ?identifier ."
+    )
+    service_filter = f"FILTER (?service = <{service_uri}>)" if service_uri else ""
 
     query = f"""
     PREFIX df: <http://stephantrattnig.org/data_fabric_ontology#>
@@ -76,14 +84,15 @@ def build_subscription_query(device_identifier=None, service_uri=None):
     """
     return query
 
+
 # specific query (multi-hop get_related_inverse)
 def build_subscription_query_new(device_identifier=None, service_uri=None):
     device_filter = (
         f'?device df:deviceIdentifier "{device_identifier}" .'
         if device_identifier
-        else '?device df:deviceIdentifier ?identifier .'
+        else "?device df:deviceIdentifier ?identifier ."
     )
-    service_filter = f'FILTER (?service = <{service_uri}>)' if service_uri else ''
+    service_filter = f"FILTER (?service = <{service_uri}>)" if service_uri else ""
 
     query = f"""
     PREFIX df: <http://stephantrattnig.org/data_fabric_ontology#>
@@ -122,6 +131,7 @@ def build_all_subscriptions_query():
     }
     """
 
+
 # get related
 def get_datapoint_query(service_uri: str) -> str:
     return f"""
@@ -137,6 +147,7 @@ def get_datapoint_query(service_uri: str) -> str:
         }}
     """
 
+
 # get related inverse
 def build_subscriptions_for_datapoint_query(datapoint_uri: str) -> str:
     return f"""
@@ -150,6 +161,7 @@ def build_subscriptions_for_datapoint_query(datapoint_uri: str) -> str:
         OPTIONAL {{ ?subscription df:hasSubscriptionState ?state . }}
     }}
     """
+
 
 # list instances
 def build_topics_query() -> str:
@@ -165,11 +177,10 @@ def build_topics_query() -> str:
     }
     """
 
+
 # special case multi hop most closely related to get_related
 def build_topic_query(
-    connector_uri: str = None,
-    topic_type_uri: str = None,
-    device_identifier: str = None
+    connector_uri: str = None, topic_type_uri: str = None, device_identifier: str = None
 ) -> str:
     """
     Build a flexible SPARQL query to fetch topics.
@@ -247,6 +258,7 @@ def build_subscription_by_id_query(subscription_id: str) -> str:
     }}
     """
 
+
 # more complex one: multi hop and so on
 def build_datapoints_for_subscription_query(subscription_id: str) -> str:
     """
@@ -272,6 +284,7 @@ def build_datapoints_for_subscription_query(subscription_id: str) -> str:
     }}
     """
 
+
 # list instances
 def build_connector_metadata_query() -> str:
     """
@@ -294,6 +307,7 @@ def build_connector_metadata_query() -> str:
       OPTIONAL { ?connector df:moduleType ?moduleType . }
     }
     """
+
 
 # multi-hop
 def build_connector_datapoint_query() -> str:
