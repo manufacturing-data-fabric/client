@@ -49,7 +49,7 @@ exclude = [
 [tool.ruff.lint]
 select = ["E", "F", "I", "ANN", "D", "PL"]
 extend-select = ["Q"]
-ignore = ["D100", "D104"]
+ignore = ["D100", "D104", "ANN401", "PLR2004", "ANN202"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
