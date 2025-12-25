@@ -1,40 +1,82 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
-from typing import List
+from typing import (
+    Any,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Mapping,
+    TypeVar,
+)
 
 import pandas as pd
 from aiokafka import AIOKafkaConsumer
 from connector.messages.datamodel_base import MsgModel
 
+T = TypeVar("T")
 
-def sparql_results_to_dataframe(bindings: list, simplify: bool = True) -> pd.DataFrame:
-    """Convert SPARQL query JSON bindings to a pandas DataFrame.
+
+def _strip_uri(value: Any) -> Any:
+    """Strip URI prefixes from a SPARQL value dict or return value unchanged.
+
+    This helper expects SPARQL JSON result values of the form::
+
+        {"type": "uri", "value": "http://example.com#LocalName"}
 
     Args:
-        bindings (list): The 'bindings' list from a SPARQL query result.
-        simplify (bool): Whether to simplify URIs in the values.
+        value: Either a SPARQL value dict or any other value.
 
     Returns:
-        pd.DataFrame: Flattened and optionally simplified DataFrame.
+        The simplified string (last fragment after '#' or '/'), or the original
+        value if it cannot be simplified.
     """
+    if isinstance(value, dict) and "value" in value:
+        val_str = value["value"]
+        if "#" in val_str:
+            return val_str.split("#")[-1]
+        if "/" in val_str:
+            return val_str.split("/")[-1]
+        return val_str
+    return value
 
-    def strip_uri(val):
-        if isinstance(val, dict) and "value" in val:
-            value = val["value"]
-            if "#" in value:
-                return value.split("#")[-1]
-            elif "/" in value:
-                return value.split("/")[-1]
-            return value
-        return val
 
-    rows = []
+def sparql_results_to_dataframe(
+    bindings: List[Mapping[str, Mapping[str, Any]]],
+    simplify: bool = True,
+) -> pd.DataFrame:
+    """Convert SPARQL query JSON bindings to a pandas DataFrame.
+
+    This function expects the standard SPARQL JSON format where each binding is a
+    dict mapping variable names to dicts containing at least a ``"value"`` key.
+
+    Example input element::
+
+        {
+            "var1": {"type": "uri", "value": "http://example.com#Foo"},
+            "var2": {"type": "literal", "value": "bar"}
+        }
+
+    Args:
+        bindings: The ``"bindings"`` list from a SPARQL query result.
+        simplify: If True, URI values are simplified to their last segment
+            (after ``#`` or ``/``). If False, the raw string in ``"value"`` is
+            used.
+
+    Returns:
+        pd.DataFrame: A flattened DataFrame with one row per binding and one
+        column per variable.
+    """
+    rows: List[Dict[str, Any]] = []
+
     for binding in bindings:
-        row = {}
+        row: Dict[str, Any] = {}
         for key, value_dict in binding.items():
             if simplify:
-                row[key] = strip_uri(value_dict)
+                row[key] = _strip_uri(value_dict)
             else:
                 row[key] = value_dict.get("value", None)
         rows.append(row)
@@ -42,47 +84,81 @@ def sparql_results_to_dataframe(bindings: list, simplify: bool = True) -> pd.Dat
     return pd.DataFrame(rows)
 
 
-def sparql_results_to_dataframe_old(bindings: list) -> pd.DataFrame:
-    """Convert SPARQL query JSON bindings to a pandas DataFrame.
+def run_async_in_sync(
+    async_func: Callable[..., Awaitable[T]],
+    *args: Any,
+    **kwargs: Any,
+) -> T:
+    """Run an async function from synchronous code.
+
+    This is intended for use from *synchronous* contexts such as a plain Python
+    script or REPL. If called from within an already running event loop (for
+    example inside an ``async def`` function or some notebook environments), a
+    ``RuntimeError`` is raised – in that case you should simply use ``await``
+    directly instead of this helper.
 
     Args:
-        bindings (list): The 'bindings' list from a SPARQL query result.
+        async_func: The async callable to execute.
+        *args: Positional arguments passed to ``async_func``.
+        **kwargs: Keyword arguments passed to ``async_func``.
 
     Returns:
-        pd.DataFrame: Flattened and human-readable DataFrame.
+        The result returned by ``async_func``.
+
+    Raises:
+        RuntimeError: If an event loop is already running in the current thread.
     """
-    rows = []
-
-    for binding in bindings:
-        row = {}
-        for key, value_dict in binding.items():
-            row[key] = value_dict.get("value", None)
-        rows.append(row)
-
-    return pd.DataFrame(rows)
-
-
-# Helper function to run async methods in sync mode
-def run_async_in_sync(async_func, *args, **kwargs):
-    """Run async functions in sync mode in Python console"""
-    loop = asyncio.get_event_loop()
-
-    if loop.is_running():
-        # In some environments like Jupyter, loop is already running
-        # So we create a new event loop
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    result = loop.run_until_complete(async_func(*args, **kwargs))
-    return result
+    try:
+        # If this succeeds, we are already inside an event loop.
+        asyncio.get_running_loop()
+        raise RuntimeError(
+            "run_async_in_sync() cannot be used when an event loop is already "
+            "running. Use `await` directly in async code."
+        )
+    except RuntimeError:
+        # No running loop in this thread: safe to use asyncio.run()
+        return asyncio.run(async_func(*args, **kwargs))
 
 
-def dump_payload(msg: MsgModel):
+def dump_payload(msg: MsgModel) -> str:
+    """Serialize a message model to pretty-printed JSON.
+
+    Args:
+        msg: Message model instance derived from ``MsgModel``.
+
+    Returns:
+        A JSON string representation of the message, indented for readability.
+    """
     return msg.model_dump_json(indent=4)
 
 
 @asynccontextmanager
-async def get_kafka_consumer(topic: str, bootstrap_servers: List[str]):
+async def get_kafka_consumer(
+    topic: str,
+    bootstrap_servers: List[str],
+) -> AsyncIterator[AIOKafkaConsumer]:
+    """Create and manage the lifecycle of an ``AIOKafkaConsumer``.
+
+    This is an async context manager that handles starting and stopping the
+    consumer for a given topic.
+
+    Example:
+        >>> async with get_kafka_consumer("my-topic", ["kafka:9092"]) as consumer:
+        ...     async for msg in consumer:
+        ...         print(msg.value)
+
+    Args:
+        topic: Kafka topic to subscribe to.
+        bootstrap_servers: List of Kafka bootstrap server addresses, e.g.
+            ``["localhost:9092"]``.
+
+    Yields:
+        An initialized and started :class:`AIOKafkaConsumer` instance.
+
+    Raises:
+        aiokafka.errors.KafkaError: If the consumer fails to start or communicate
+        with the Kafka cluster.
+    """
     consumer = AIOKafkaConsumer(
         topic,
         bootstrap_servers=bootstrap_servers,
@@ -95,19 +171,29 @@ async def get_kafka_consumer(topic: str, bootstrap_servers: List[str]):
         await consumer.stop()
 
 
-def simplify_sparql_results(results):
-    def strip_uri(val):
-        if isinstance(val, dict) and "value" in val:
-            value = val["value"]
-            if "#" in value:
-                return value.split("#")[-1]
-            elif "/" in value:
-                return value.split("/")[-1]
-            return value
-        return val
+def simplify_sparql_results(
+    results: Iterable[Mapping[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Simplify SPARQL JSON bindings by stripping URI prefixes.
 
-    simplified = []
+    This function is similar in spirit to :func:`sparql_results_to_dataframe`,
+    but operates on a list of dicts and returns a list of simplified dicts
+    instead of a DataFrame.
+
+    Args:
+        results: An iterable of SPARQL result rows. Each row is expected to be a
+            mapping from variable name to either a SPARQL value dict (with a
+            ``"value"`` key) or a plain value.
+
+    Returns:
+        A list of dictionaries where URI-like values are simplified to their
+        local name (the last segment after ``#`` or ``/``) and non-URI values
+        are returned unchanged.
+    """
+    simplified: List[Dict[str, Any]] = []
+
     for row in results:
-        simplified_row = {k: strip_uri(v) for k, v in row.items()}
+        simplified_row: Dict[str, Any] = {key: _strip_uri(value) for key, value in row.items()}
         simplified.append(simplified_row)
+
     return simplified

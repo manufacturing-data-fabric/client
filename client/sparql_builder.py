@@ -210,7 +210,8 @@ class SPARQLBuilder:
             return (
                 self.prefixes
                 + f"""
-            SELECT ?subjectIri ?subjectType ?predicate ?object ?subjectLabel ?objectLabel ?objectType
+            SELECT ?subjectIri ?subjectType ?predicate ?object
+                   ?subjectLabel ?objectLabel ?objectType
             WHERE {{
               VALUES ?subjectIri {{ {subject_token} }}
 

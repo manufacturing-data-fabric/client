@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from os import environ
-from typing import Type
+from typing import Any, Dict, KeysView, List, Optional, Tuple, Union
 from uuid import uuid4
 
 import aiohttp
@@ -9,6 +9,7 @@ import pandas as pd
 from aiokafka import AIOKafkaProducer  # todo: exchange via the KafkaBroker class?
 from connector.messages.datamodel_base import (
     ActionCommand,
+    MsgModel,
     ReadCommand,
     SubscribeCommand,
     UnsubscribeCommand,
@@ -21,37 +22,49 @@ from connector.messages.datamodel_utils import (
 from connector.messages.message_generator import create_request
 from dotenv import load_dotenv
 
-from client.connector_client_utils import *
-from client.sparql_builder import *
+from client.connector_client_utils import (
+    dump_payload,
+    get_kafka_consumer,
+    run_async_in_sync,
+    sparql_results_to_dataframe,
+)
+from client.sparql_builder import SPARQLBuilder
+from messaging.datamodel import (
+    OPCUAReadPayload,
+    OPCUAWritePayload,  # todo: for a protocol-neutral client, this needs to be removed
+)
 
 # Namespace constants (until namespace_resolver is integrated)
 DF = "http://stephantrattnig.org/data_fabric_ontology#"
 DF_INSTANCE = "http://stephantrattnig.org/instances#"
 RDFS = "http://www.w3.org/2000/01/rdf-schema#"
 
-
-from messaging.datamodel import (
-    OPCUAReadPayload,
-    OPCUAWritePayload,  # todo: for a protocol-neutral client, this needs to be removed
-)
-
 load_dotenv()
 
-# overall todo: provide the possibility to "wrap" this class similarly like it is done with the connector (abstract)!!!
-# overall todo: check the abstract broker implementation and see whether there is something to use for here!
+# overall todo: provide the possibility to "wrap" this class similarly like
+# it is done with the connector (abstract)!!!
+# overall todo: check the abstract broker implementation and see whether
+# there is something to use for here!
 
 
 class ConnectorClient:
-    """A class that has the intention to be wrapping methods for communicating with the connector itself
+    """Client for communicating with connectors via Kafka and querying GraphDB.
 
     The connector should be usable for three different use-cases:
-    - providing the possibility for the user to perform scripting tasks (manual interaction with the Connector)
-    - providing the capability for the user to perform tool calling using langchain
-    - providing the capability for the user to perform comprehensive testing - unit as well as integration
-
+    - providing the possibility for the user to perform scripting tasks
+      (manual interaction with the Connector)
+    - providing the capability for the user to perform tool calling using
+      langchain
+    - providing the capability for the user to perform comprehensive testing -
+      unit as well as integration
     """
 
-    def __init__(self, bootstrap_servers: List[str]):
+    def __init__(self, bootstrap_servers: List[str]) -> None:
+        """Initialize the ConnectorClient with Kafka bootstrap servers.
+
+        Args:
+            bootstrap_servers: List of Kafka bootstrap server addresses.
+        """
         self.bootstrap_server = bootstrap_servers
         self.producer = None
 
@@ -80,7 +93,15 @@ class ConnectorClient:
             f"={self.bootstrap_server}"
         )
 
-    async def switch_connector(self, module_id: str):
+    async def switch_connector(self, module_id: str) -> None:
+        """Switch to a different connector configuration by module ID.
+
+        Args:
+            module_id: The module ID of the connector to switch to.
+
+        Raises:
+            ValueError: If no configuration exists for the given module_id.
+        """
         if module_id in self.connectors:
             config = self.connectors[module_id]
             self.request_topic = config["request"]
@@ -91,12 +112,15 @@ class ConnectorClient:
         else:
             raise ValueError(f"No topic config found for module_id={module_id}")
 
-    def return_connectors(self):
+    def return_connectors(self) -> KeysView[str]:
+        """Return the keys of available connector configurations."""
         return self.connectors.keys()
 
-    async def load_connector_config(self):
+    async def load_connector_config(self) -> None:
+        """Load connector configurations from GraphDB."""
         # todo: think about executing this during __init__
-        # todo: the df: was necessary but was just adapted here for convenience. Reason are new sparql_builder methods
+        # todo: the df: was necessary but was just adapted here for convenience.
+        # Reason are new sparql_builder methods
         # todo: in future, eventually clean up and use the namespace_resolver here?
         df = "http://stephantrattnig.org/data_fabric_ontology#"
         query = self.builder.build_list_instances_query(
@@ -114,7 +138,7 @@ class ConnectorClient:
             self.connectors[f"{module_id}"] = new_config
             self._logger.info(f"Added new Connector {module_id} to the Topic Configurations.")
 
-    async def _create_producer(self):
+    async def _create_producer(self) -> None:
         self._logger.info("Creating Kafka producer...")
         self.producer = AIOKafkaProducer(
             value_serializer=lambda m: m.encode("utf-8"), bootstrap_servers=self.bootstrap_server
@@ -122,14 +146,13 @@ class ConnectorClient:
         await self.producer.start()
         self._logger.info("Kafka producer created and started.")
 
-    async def close(self):
+    async def close(self) -> None:
+        """Stop the Kafka producer if it is running."""
         if self.producer:
             await self.producer.stop()
             self._logger.info("Kafka producer stopped.")
 
-    async def _send_request(
-        self, request_message: str, topic_name: str
-    ):  # todo: do type annotation here if necessary!!!
+    async def _send_request(self, request_message: str, topic_name: str) -> None:
         if not self.producer or self.producer._closed:
             await self._create_producer()
         try:
@@ -140,26 +163,28 @@ class ConnectorClient:
             self._logger.error(f"Failed to send request to {topic_name}: {e}")
 
     # todo: gather read, subscribe, unsubscribe and action request in one method!
-    async def publish_read_command(self, base_payload: BasePayload):
-        """Senad a ReadCommand message to a dedicated request topic"""
+    async def publish_read_command(self, base_payload: BasePayload) -> None:
+        """Send a ReadCommand message to a dedicated request topic."""
         self._logger.info(f"Preparing read request for payload: {base_payload}")
         request_message = create_request(base_payload=base_payload, command_cls=ReadCommand)
         await self._send_request(dump_payload(request_message), self.request_topic)
         self._logger.info(
-            f"Read request sent to {self.request_topic} with payload: {request_message.model_dump_json(indent=4)}"
+            f"Read request sent to {self.request_topic} with payload: "
+            f"{request_message.model_dump_json(indent=4)}"
         )
 
-    async def publish_subscribe_command(self, base_payload: BasePayload):
-        """Send a Subscription message to a dedicated request topic"""
+    async def publish_subscribe_command(self, base_payload: BasePayload) -> None:
+        """Send a Subscription message to a dedicated request topic."""
         request_message = create_request(base_payload=base_payload, command_cls=SubscribeCommand)
         await self._send_request(dump_payload(request_message), self.request_topic)
 
-    async def publish_unsubscribe_command(self, base_payload: BasePayload):
-        """Unsubscribe to an image feed of an attached camera"""
+    async def publish_unsubscribe_command(self, base_payload: BasePayload) -> None:
+        """Send an Unsubscribe command to a dedicated request topic."""
         request_message = create_request(base_payload=base_payload, command_cls=UnsubscribeCommand)
         await self._send_request(dump_payload(request_message), self.request_topic)
 
-    async def publish_action_command(self, base_payload: BasePayload):
+    async def publish_action_command(self, base_payload: BasePayload) -> None:
+        """Send an ActionCommand to a dedicated request topic."""
         self._logger.info(f"Preparing trigger action request for payload: {base_payload}")
 
         # request_message = create_request(base_payload=base_payload, command_type=ActionCommand)
@@ -167,10 +192,13 @@ class ConnectorClient:
         await self._send_request(dump_payload(request_message), self.request_topic)
 
         self._logger.info(
-            f"Trigger action request sent to {self.request_topic} with payload: {request_message.model_dump_json(indent=4)}"
+            f"Trigger action request sent to {self.request_topic} with payload: "
+            f"{request_message.model_dump_json(indent=4)}"
         )
 
-    async def send_read_and_await_response(self, base_payload: BasePayload, timeout: int = 5):
+    async def send_read_and_await_response(
+        self, base_payload: BasePayload, timeout: int = 5
+    ) -> Dict[str, Any]:
         """Send a ReadCommand and wait for the matching response."""
         # todo: timeout does not work yet!
         if not self.producer:
@@ -216,7 +244,9 @@ class ConnectorClient:
                     "values": None,
                 }
 
-    async def send_subscribe_and_await_response(self, base_payload, timeout: int = 5):
+    async def send_subscribe_and_await_response(
+        self, base_payload: BasePayload, timeout: int = 5
+    ) -> Union[Tuple[Dict[str, Any], Dict[str, Any]], Dict[str, Any]]:
         """Send a subscribe request and return concise, user-friendly feedback."""
         if not self.producer:
             await self._create_producer()
@@ -267,8 +297,10 @@ class ConnectorClient:
                         "message": f"No response within {timeout} seconds.",
                     }
 
-    async def send_unsubscribe_and_await_response(self, base_payload, timeout: int = 5):
-
+    async def send_unsubscribe_and_await_response(
+        self, base_payload: BasePayload, timeout: int = 5
+    ) -> Union[Tuple[Dict[str, Any], Dict[str, Any]], Dict[str, Any]]:
+        """Send an unsubscribe request and await response."""
         if not self.producer:
             await self._create_producer()
 
@@ -312,8 +344,10 @@ class ConnectorClient:
                         "message": f"No response within {timeout} seconds.",
                     }
 
-    async def send_action_and_await_response(self, base_payload, timeout: int = 5):
-
+    async def send_action_and_await_response(
+        self, base_payload: BasePayload, timeout: int = 5
+    ) -> Dict[str, Any]:
+        """Send an action command and await response."""
         if not self.producer:
             await self._create_producer()
 
@@ -345,11 +379,12 @@ class ConnectorClient:
             except asyncio.TimeoutError:
                 return {
                     "status": "success",
-                    "message": f"No response received for correlation_id {correlation_id} within {timeout} seconds.",
+                    "message": f"No response received for correlation_id "
+                    f"{correlation_id} within {timeout} seconds.",
                 }
 
-    async def resolve_connector_from_datapoint(self, datapoint_uri: str):
-        """Resolve all KG information needed for subscription or read"""
+    async def resolve_connector_from_datapoint(self, datapoint_uri: str) -> Dict[str, Any]:
+        """Resolve all KG information needed for subscription or read."""
         # Get DataPoint identifier
         props = await self.get_properties(
             subject_uri=datapoint_uri, property_uris=[f"{DF}dataPointIdentifier"], pretty=True
@@ -387,8 +422,8 @@ class ConnectorClient:
             "module_id": module_id,
         }
 
-    async def resolve_connector_from_subscription(self, subscription_uri: str):
-
+    async def resolve_connector_from_subscription(self, subscription_uri: str) -> Dict[str, Any]:
+        """Resolve connector information from a subscription URI."""
         result = await self.get_related_inverse(
             object_uri=subscription_uri, predicate_uri=f"{DF}tracksSubscription", pretty=True
         )
@@ -407,7 +442,9 @@ class ConnectorClient:
             "subscription_uri": subscription_uri,
         }
 
-    async def resolve_and_subscribe(self, datapoint_uri: str, timeout: int = 5):
+    async def resolve_and_subscribe(
+        self, datapoint_uri: str, timeout: int = 5
+    ) -> Union[Tuple[Dict[str, Any], Dict[str, Any]], Dict[str, Any]]:
         """High-level method to trace, switch connector, and subscribe."""
         result = await self.resolve_connector_from_datapoint(datapoint_uri)
 
@@ -422,12 +459,17 @@ class ConnectorClient:
         await self.switch_connector(result["module_id"])
         return await self.send_subscribe_and_await_response(base_payload, timeout)
 
-    async def resolve_and_read_datapoint(self, datapoint_uri: str, timeout: int = 5):
+    async def resolve_and_read_datapoint(
+        self, datapoint_uri: str, timeout: int = 5
+    ) -> Dict[str, Any]:
         """High-level method to trace, switch connector, and read data."""
         result = await self.resolve_connector_from_datapoint(datapoint_uri)
 
-        # todo: at a later point, this payload should be fetched from the knowledge graph coupled with the interaction module!
-        # await self.get_related(subject_uri=result["connector_uri"], predicate_uri="df:hasCapability")
+        # todo: at a later point, this payload should be fetched from the
+        # knowledge graph coupled with the interaction module!
+        # await self.get_related(
+        #     subject_uri=result["connector_uri"], predicate_uri="df:hasCapability"
+        # )
         # then query the  capabilities if the read capability is there
         # then pull the related datamodel (a property)
         # then continue
@@ -442,8 +484,10 @@ class ConnectorClient:
         await self.switch_connector(result["module_id"])
         return await self.send_read_and_await_response(read_payload, timeout)
 
-    async def resolve_and_unsubscribe(self, subscription_uri: str, timeout: int = 5):
-
+    async def resolve_and_unsubscribe(
+        self, subscription_uri: str, timeout: int = 5
+    ) -> Union[Tuple[Dict[str, Any], Dict[str, Any]], Dict[str, Any]]:
+        """High-level method to trace, switch connector, and unsubscribe."""
         result = await self.resolve_connector_from_subscription(subscription_uri)
 
         print(result["subscription_uri"].split("#")[-1])
@@ -455,8 +499,10 @@ class ConnectorClient:
         await self.switch_connector(result["module_id"])
         return await self.send_unsubscribe_and_await_response(base_payload, timeout)
 
-    async def resolve_and_trigger_action(self, value_dict: str, timeout: int = 5):
-        # todo: at a later point, datapoint_uri should be a generic dict with data payloads for actions
+    async def resolve_and_trigger_action(self, value_dict: str, timeout: int = 5) -> Dict[str, Any]:
+        """High-level method to resolve and trigger an action command."""
+        # todo: at a later point, datapoint_uri should be a generic dict with
+        # data payloads for actions
 
         # todo: resolve payload from knowledge graph (e.g. trace back the action from the KG
         result = {}
@@ -468,7 +514,10 @@ class ConnectorClient:
         return await self.send_action_and_await_response(base_payload, timeout)
 
     # todo: old and potentially deprecated - not of interest for core client
-    async def collect_data_for_duration(self, base_payload, duration: int = 10) -> list:
+    async def collect_data_for_duration(
+        self, base_payload: BasePayload, duration: int = 10
+    ) -> pd.DataFrame:
+        """Collect telemetry data for a specified duration (deprecated)."""
         collected_data = []
 
         msg = await self.send_subscribe_and_await_response(base_payload=base_payload)
@@ -487,7 +536,9 @@ class ConnectorClient:
         unsubscribe_payload = SubscriptionUnregisterRequest(
             subscription_identifier=subscription_id, device_origin="client"
         )
-        # unsubscribe_payload = OPCUAUnsubscribeCommandPayload(subscription_id=subscription_id, device_origin="client")
+        # unsubscribe_payload = OPCUAUnsubscribeCommandPayload(
+        #     subscription_id=subscription_id, device_origin="client"
+        # )
         await self.send_unsubscribe_and_await_response(base_payload=unsubscribe_payload)
 
         rows = []
@@ -503,10 +554,16 @@ class ConnectorClient:
         return pd.DataFrame(rows)
 
     # todo: old and potentially deprecated - not of interest for core client
-    async def collect_data_from_stream(self, subscription_id: str, duration: int = 10):
-
+    # Note: This method references build_subscription_by_id_query which is not imported
+    async def collect_data_from_stream(
+        self, subscription_id: str, duration: int = 10
+    ) -> Optional[pd.DataFrame]:
+        """Collect data from an existing subscription stream (deprecated)."""
         collected_data = []
-        result = await self.query_graphdb(build_subscription_by_id_query((subscription_id)))
+        # TODO: build_subscription_by_id_query is not defined - this method needs fixing
+        result = await self.query_graphdb(
+            build_subscription_by_id_query((subscription_id))
+        )  # noqa: F821
 
         # check if the subscription is there
         if result is None:
@@ -542,8 +599,8 @@ class ConnectorClient:
 
         return pd.DataFrame(rows)
 
-    def get_subscriptions(self):
-        """Helper method for returning maintained subscriptions by this client"""
+    def get_subscriptions(self) -> List[Dict[str, Any]]:
+        """Return maintained subscriptions by this client."""
         # todo: needs to be checked!!!
         subscription_ids = []
         for entry in self.subscriptions:
@@ -554,7 +611,10 @@ class ConnectorClient:
 
     ####### sparql stuff
 
-    async def query_graphdb(self, query: str, pretty=False):
+    async def query_graphdb(
+        self, query: str, pretty: bool = False
+    ) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
+        """Execute a SPARQL query against GraphDB."""
         async with aiohttp.ClientSession() as session:
             headers = {
                 "Accept": "application/sparql-results+json",
@@ -565,7 +625,7 @@ class ConnectorClient:
             async with session.post(self.sparql_endpoint, headers=headers, data=data) as response:
                 if response.status == 200:
                     result = await response.json()
-                    if pretty == True:
+                    if pretty:
                         return sparql_results_to_dataframe(result["results"]["bindings"])
                     else:
                         return result["results"]["bindings"]
@@ -576,29 +636,48 @@ class ConnectorClient:
                     return []
 
     # basic intents
-    async def get_all_classes(self, pretty: bool = False):
+    async def get_all_classes(
+        self, pretty: bool = False
+    ) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
+        """Get all classes from the knowledge graph."""
         query = self.builder.get_all_classes_query()
         return await self.query_graphdb(query, pretty=pretty)
 
     async def list_instances(
-        self, class_uri: str, optional_props: list[str] = None, pretty: bool = False
-    ):
+        self,
+        class_uri: str,
+        optional_props: Optional[List[str]] = None,
+        pretty: bool = False,
+    ) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
+        """List all instances of a given class."""
         query = self.builder.build_list_instances_query(class_uri, optional_props)
         return await self.query_graphdb(query, pretty=pretty)
 
     async def get_properties(
-        self, subject_uri: str, property_uris: list[str] = None, pretty: bool = False
-    ):
+        self,
+        subject_uri: str,
+        property_uris: Optional[List[str]] = None,
+        pretty: bool = False,
+    ) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
+        """Get properties of a given subject."""
         query = self.builder.build_get_properties_query(subject_uri, property_uris)
         return await self.query_graphdb(query, pretty=pretty)
 
-    async def get_related(self, subject_uri: str, predicate_uri: str, pretty: bool = False):
+    async def get_related(
+        self, subject_uri: str, predicate_uri: str, pretty: bool = False
+    ) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
+        """Get entities related to a subject via a predicate."""
         query = self.builder.build_get_related_query(subject_uri, predicate_uri)
         return await self.query_graphdb(query, pretty=pretty)
 
     async def get_related_inverse(
-        self, object_uri: str, predicate_uri: str, optional_props: list[str] = None, pretty=False
-    ):
+        self,
+        object_uri: str,
+        predicate_uri: str,
+        optional_props: Optional[List[str]] = None,
+        pretty: bool = False,
+    ) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
+        """Get subjects related to an object via a predicate (inverse)."""
         query = self.builder.build_get_related_inverse_query(
             object_uri, predicate_uri, optional_props
         )
@@ -607,60 +686,85 @@ class ConnectorClient:
     async def search_entity(
         self,
         keyword: str,
-        class_uri: str = None,
+        class_uri: Optional[str] = None,
         property_uri: str = "rdfs:label",
         match_mode: str = "fuzzy",
         pretty: bool = False,
-    ):
+    ) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
+        """Search for entities matching a keyword."""
         query = self.builder.build_search_entity_query(keyword, class_uri, property_uri, match_mode)
         return await self.query_graphdb(query, pretty=pretty)
 
     ####### sync methods
 
-    def resolve_connector_and_payload_sync(self, datapoint_uri: str):
+    def resolve_connector_and_payload_sync(self, datapoint_uri: str) -> Dict[str, Any]:
+        """Sync wrapper for resolve_connector_from_datapoint."""
         return run_async_in_sync(self.resolve_connector_from_datapoint, datapoint_uri)
 
-    def send_request_sync(self, request_message, topic_name: str):
+    def send_request_sync(self, request_message: str, topic_name: str) -> None:
+        """Sync wrapper for sending a request and closing."""
         run_async_in_sync(self._send_request, request_message, topic_name)
         run_async_in_sync(self.close)
 
-    def publish_read_command_sync(self, base_payload: Type[BasePayload]):
+    def publish_read_command_sync(self, base_payload: BasePayload) -> None:
+        """Sync wrapper for publish_read_command."""
         run_async_in_sync(self.publish_read_command, base_payload)
         run_async_in_sync(self.close)
 
-    def publish_subscribe_command_sync(self, base_payload: Type[BasePayload]):
+    def publish_subscribe_command_sync(self, base_payload: BasePayload) -> None:
+        """Sync wrapper for publish_subscribe_command."""
         run_async_in_sync(self.publish_subscribe_command, base_payload)
         run_async_in_sync(self.close)
 
-    def publish_unsubscribe_command_sync(self, base_payload: Type[BasePayload]):
+    def publish_unsubscribe_command_sync(self, base_payload: BasePayload) -> None:
+        """Sync wrapper for publish_unsubscribe_command."""
         run_async_in_sync(self.publish_unsubscribe_command, base_payload)
         run_async_in_sync(self.close)
 
-    def publish_action_command_sync(self, base_payload: BasePayload):
+    def publish_action_command_sync(self, base_payload: BasePayload) -> None:
+        """Sync wrapper for publish_action_command."""
         run_async_in_sync(self.publish_action_command, base_payload)
         run_async_in_sync(self.close)
 
-    def send_read_and_await_response_sync(self, base_payload: BasePayload, timeout: int):
+    def send_read_and_await_response_sync(self, base_payload: BasePayload, timeout: int) -> None:
+        """Sync wrapper for send_read_and_await_response."""
         run_async_in_sync(self.send_read_and_await_response, base_payload, timeout)
 
-    def query_graphdb_sync(self, query: str, pretty=True):
+    def query_graphdb_sync(
+        self, query: str, pretty: bool = True
+    ) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
+        """Sync wrapper for query_graphdb."""
         return run_async_in_sync(self.query_graphdb, query, pretty)
 
-    def get_all_classes_sync(self):
+    def get_all_classes_sync(self) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
+        """Sync wrapper for get_all_classes."""
         return run_async_in_sync(self.get_all_classes)
 
-    def list_instances_sync(self, class_uri: str, optional_props: list[str] = None):
+    def list_instances_sync(
+        self, class_uri: str, optional_props: Optional[List[str]] = None
+    ) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
+        """Sync wrapper for list_instances."""
         return run_async_in_sync(self.list_instances, class_uri, optional_props)
 
-    def get_properties_sync(self, subject_uri: str, property_uris: list[str] = None):
+    def get_properties_sync(
+        self, subject_uri: str, property_uris: Optional[List[str]] = None
+    ) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
+        """Sync wrapper for get_properties."""
         return run_async_in_sync(self.get_properties, subject_uri, property_uris)
 
-    def get_related_sync(self, subject_uri: str, predicate_uri: str):
+    def get_related_sync(
+        self, subject_uri: str, predicate_uri: str
+    ) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
+        """Sync wrapper for get_related."""
         return run_async_in_sync(self.get_related, subject_uri, predicate_uri)
 
     def get_related_inverse_sync(
-        self, object_uri: str, predicate_uri: str, optional_props: list[str] = None
-    ):
+        self,
+        object_uri: str,
+        predicate_uri: str,
+        optional_props: Optional[List[str]] = None,
+    ) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
+        """Sync wrapper for get_related_inverse."""
         return run_async_in_sync(
             self.get_related_inverse, object_uri, predicate_uri, optional_props
         )
@@ -668,17 +772,20 @@ class ConnectorClient:
     def search_entity_sync(
         self,
         keyword: str,
-        class_uri: str = None,
+        class_uri: Optional[str] = None,
         property_uri: str = "rdfs:label",
         match_mode: str = "fuzzy",
-    ):
+    ) -> Union[pd.DataFrame, List[Dict[str, Any]]]:
+        """Sync wrapper for search_entity."""
         return run_async_in_sync(self.search_entity, keyword, class_uri, property_uri, match_mode)
 
-    def load_connector_config_sync(self):
+    def load_connector_config_sync(self) -> None:
+        """Sync wrapper for load_connector_config."""
         run_async_in_sync(self.load_connector_config)
 
 
-# # todo: make this subscribe_to_nodes generic as it needs to be used for (a) testing as well as for (b) user-scripting
+# # todo: make this subscribe_to_nodes generic as it needs to be used for
+# # (a) testing as well as for (b) user-scripting
 # #  and (c) tool-calling
 
 if __name__ == "__main__":
