@@ -1,11 +1,11 @@
+import asyncio
 import logging
 from os import environ
 from typing import Type
 from uuid import uuid4
 
 import aiohttp
-
-#from idlelib.colorizer import matched_named_groups #todo: remove?
+import pandas as pd
 from aiokafka import AIOKafkaProducer  # todo: exchange via the KafkaBroker class?
 from connector.messages.datamodel_base import (
     ActionCommand,
@@ -21,16 +21,14 @@ from connector.messages.datamodel_utils import (
 from connector.messages.message_generator import create_request
 from dotenv import load_dotenv
 
-from .connector_client_utils import *
-from .sparql_builder import *
+from client.connector_client_utils import *
+from client.sparql_builder import *
 
 # Namespace constants (until namespace_resolver is integrated)
 DF = "http://stephantrattnig.org/data_fabric_ontology#"
 DF_INSTANCE = "http://stephantrattnig.org/instances#"
 RDFS = "http://www.w3.org/2000/01/rdf-schema#"
-import asyncio
 
-import pandas as pd
 
 from messaging.datamodel import (
     OPCUAReadPayload,
@@ -39,8 +37,9 @@ from messaging.datamodel import (
 
 load_dotenv()
 
-# overall todo: provid the possibility to "wrap" this class similarly like it is done with the connector (abstract)!!!
+# overall todo: provide the possibility to "wrap" this class similarly like it is done with the connector (abstract)!!!
 # overall todo: check the abstract broker implementation and see whether there is something to use for here!
+
 
 class ConnectorClient:
     """A class that has the intention to be wrapping methods for communicating with the connector itself
@@ -51,6 +50,7 @@ class ConnectorClient:
     - providing the capability for the user to perform comprehensive testing - unit as well as integration
 
     """
+
     def __init__(self, bootstrap_servers: List[str]):
         self.bootstrap_server = bootstrap_servers
         self.producer = None
@@ -73,11 +73,12 @@ class ConnectorClient:
 
         self.builder = SPARQLBuilder()
 
-        self.subscriptions = [] # todo: is it working?
+        self.subscriptions = []  # todo: is it working?
         self._logger = logging.getLogger(__name__)
         self._logger.info(
             f"ConnectorClient initialized with module_id={self.module_id} and bootstrap_servers"
-            f"={self.bootstrap_server}")
+            f"={self.bootstrap_server}"
+        )
 
     async def switch_connector(self, module_id: str):
         if module_id in self.connectors:
@@ -99,11 +100,7 @@ class ConnectorClient:
         # todo: in future, eventually clean up and use the namespace_resolver here?
         df = "http://stephantrattnig.org/data_fabric_ontology#"
         query = self.builder.build_list_instances_query(
-            class_uri=f"{df}Connector",
-            optional_props=[
-                f"{df}moduleId",
-                f"{df}moduleType"
-            ]
+            class_uri=f"{df}Connector", optional_props=[f"{df}moduleId", f"{df}moduleType"]
         )
         result = await self.query_graphdb(query, pretty=False)
 
@@ -120,8 +117,7 @@ class ConnectorClient:
     async def _create_producer(self):
         self._logger.info("Creating Kafka producer...")
         self.producer = AIOKafkaProducer(
-            value_serializer=lambda m: m.encode("utf-8"),
-            bootstrap_servers=self.bootstrap_server
+            value_serializer=lambda m: m.encode("utf-8"), bootstrap_servers=self.bootstrap_server
         )
         await self.producer.start()
         self._logger.info("Kafka producer created and started.")
@@ -131,7 +127,9 @@ class ConnectorClient:
             await self.producer.stop()
             self._logger.info("Kafka producer stopped.")
 
-    async def _send_request(self, request_message: str, topic_name: str): # todo: do type annotation here if necessary!!!
+    async def _send_request(
+        self, request_message: str, topic_name: str
+    ):  # todo: do type annotation here if necessary!!!
         if not self.producer or self.producer._closed:
             await self._create_producer()
         try:
@@ -148,7 +146,8 @@ class ConnectorClient:
         request_message = create_request(base_payload=base_payload, command_cls=ReadCommand)
         await self._send_request(dump_payload(request_message), self.request_topic)
         self._logger.info(
-            f"Read request sent to {self.request_topic} with payload: {request_message.model_dump_json(indent=4)}")
+            f"Read request sent to {self.request_topic} with payload: {request_message.model_dump_json(indent=4)}"
+        )
 
     async def publish_subscribe_command(self, base_payload: BasePayload):
         """Send a Subscription message to a dedicated request topic"""
@@ -163,11 +162,13 @@ class ConnectorClient:
     async def publish_action_command(self, base_payload: BasePayload):
         self._logger.info(f"Preparing trigger action request for payload: {base_payload}")
 
-        #request_message = create_request(base_payload=base_payload, command_type=ActionCommand)
+        # request_message = create_request(base_payload=base_payload, command_type=ActionCommand)
         request_message = create_request(base_payload=base_payload, command_cls=ActionCommand)
         await self._send_request(dump_payload(request_message), self.request_topic)
 
-        self._logger.info(f"Trigger action request sent to {self.request_topic} with payload: {request_message.model_dump_json(indent=4)}")
+        self._logger.info(
+            f"Trigger action request sent to {self.request_topic} with payload: {request_message.model_dump_json(indent=4)}"
+        )
 
     async def send_read_and_await_response(self, base_payload: BasePayload, timeout: int = 5):
         """Send a ReadCommand and wait for the matching response."""
@@ -190,8 +191,12 @@ class ConnectorClient:
                     msg = MsgModel.model_validate(message.value)
                     if msg.root.correlation_id == correlation_id:
                         base_payload = msg.root.payload.base_payload
-                        self._logger.info(f"Received read response from: {base_payload.device_origin}")
-                        self._logger.debug(f"Message payload: {base_payload.model_dump_json(indent=2)}")
+                        self._logger.info(
+                            f"Received read response from: {base_payload.device_origin}"
+                        )
+                        self._logger.debug(
+                            f"Message payload: {base_payload.model_dump_json(indent=2)}"
+                        )
                         return base_payload
 
             try:
@@ -208,7 +213,7 @@ class ConnectorClient:
                 return {
                     "status": "timeout",
                     "message": f"❌ No read response within {timeout} seconds.",
-                    "values": None
+                    "values": None,
                 }
 
     async def send_subscribe_and_await_response(self, base_payload, timeout: int = 5):
@@ -222,7 +227,7 @@ class ConnectorClient:
         self._logger.info(f"Sent subscribe request with correlation_id: {correlation_id}")
         self._logger.debug(f"Subscribe payload: {request_message.model_dump_json(indent=2)}")
 
-        async with (get_kafka_consumer(self.response_topic, self.bootstrap_server) as consumer):
+        async with get_kafka_consumer(self.response_topic, self.bootstrap_server) as consumer:
             await self._send_request(dump_payload(request_message), self.request_topic)
             await self.close()
 
@@ -235,7 +240,9 @@ class ConnectorClient:
                         matched_responses.append(msg)
                         base_payload = msg.root.payload.base_payload
                         self._logger.info(f"Received response from: {base_payload.device_origin}")
-                        self._logger.debug(f"Message payload: {base_payload.model_dump_json(indent=2)}")
+                        self._logger.debug(
+                            f"Message payload: {base_payload.model_dump_json(indent=2)}"
+                        )
                         if len(matched_responses) == 2:
                             break
 
@@ -247,7 +254,7 @@ class ConnectorClient:
                 return matched_responses[0].model_dump(), matched_responses[1].model_dump()
 
             except asyncio.TimeoutError:
-                print(matched_responses) # todo: remove this!
+                print(matched_responses)  # todo: remove this!
                 # todo: these matched responses should
                 if matched_responses:
                     self._logger.warning("Timeout occurred, but one response was received.")
@@ -260,7 +267,7 @@ class ConnectorClient:
                         "message": f"No response within {timeout} seconds.",
                     }
 
-    async def send_unsubscribe_and_await_response(self, base_payload, timeout: int=5):
+    async def send_unsubscribe_and_await_response(self, base_payload, timeout: int = 5):
 
         if not self.producer:
             await self._create_producer()
@@ -284,7 +291,9 @@ class ConnectorClient:
                         matched_responses.append(msg)
                         base_payload = msg.root.payload.base_payload
                         self._logger.info(f"Received response from: {base_payload.device_origin}")
-                        self._logger.debug(f"Message payload: {base_payload.model_dump_json(indent=2)}")
+                        self._logger.debug(
+                            f"Message payload: {base_payload.model_dump_json(indent=2)}"
+                        )
                         if len(matched_responses) == 2:
                             break
 
@@ -303,7 +312,7 @@ class ConnectorClient:
                         "message": f"No response within {timeout} seconds.",
                     }
 
-    async def send_action_and_await_response(self, base_payload, timeout: int=5):
+    async def send_action_and_await_response(self, base_payload, timeout: int = 5):
 
         if not self.producer:
             await self._create_producer()
@@ -324,7 +333,9 @@ class ConnectorClient:
                     if msg.root.correlation_id == correlation_id:
                         base_payload = msg.root.payload.base_payload
                         self._logger.info(f"Received response from: {base_payload.device_origin}")
-                        self._logger.debug(f"Message payload: {base_payload.model_dump_json(indent=2)}")
+                        self._logger.debug(
+                            f"Message payload: {base_payload.model_dump_json(indent=2)}"
+                        )
                         return base_payload
 
             try:
@@ -340,22 +351,32 @@ class ConnectorClient:
     async def resolve_connector_from_datapoint(self, datapoint_uri: str):
         """Resolve all KG information needed for subscription or read"""
         # Get DataPoint identifier
-        props = await self.get_properties(subject_uri=datapoint_uri, property_uris=[f"{DF}dataPointIdentifier"], pretty=True)
+        props = await self.get_properties(
+            subject_uri=datapoint_uri, property_uris=[f"{DF}dataPointIdentifier"], pretty=True
+        )
         datapoint_identifier = props.iloc[0]["object"]
 
         # Trace to device
-        device_result = await self.get_related_inverse(object_uri=datapoint_uri, predicate_uri=f"{DF}hasDataPoint", pretty=True)
+        device_result = await self.get_related_inverse(
+            object_uri=datapoint_uri, predicate_uri=f"{DF}hasDataPoint", pretty=True
+        )
         device_uri = f"{DF_INSTANCE}{device_result.iloc[0]['subjectIri']}"
 
         # Trace to service
-        service_result = await self.get_related(subject_uri=device_uri, predicate_uri=f"{DF}providesService", pretty=True)
+        service_result = await self.get_related(
+            subject_uri=device_uri, predicate_uri=f"{DF}providesService", pretty=True
+        )
         service_uri = f"{DF_INSTANCE}{service_result.iloc[0]['object']}"
 
         # Trace to connector
-        connector_result = await self.get_related_inverse(object_uri=service_uri, predicate_uri=f"{DF}connectedTo", pretty=True)
+        connector_result = await self.get_related_inverse(
+            object_uri=service_uri, predicate_uri=f"{DF}connectedTo", pretty=True
+        )
         connector_uri = f"{DF_INSTANCE}{connector_result.iloc[0]['subjectIri']}"
 
-        module_result = await self.get_properties(subject_uri=connector_uri, property_uris=[f"{DF}moduleId"], pretty=True)
+        module_result = await self.get_properties(
+            subject_uri=connector_uri, property_uris=[f"{DF}moduleId"], pretty=True
+        )
         module_id = module_result.iloc[0]["object"]
 
         return {
@@ -368,19 +389,25 @@ class ConnectorClient:
 
     async def resolve_connector_from_subscription(self, subscription_uri: str):
 
-        result = await self.get_related_inverse(object_uri=subscription_uri, predicate_uri=f"{DF}tracksSubscription", pretty=True)
-        connector_uri = f"{DF_INSTANCE}{result.iloc[0]['subjectIri']}"  # this should be the connector URI
+        result = await self.get_related_inverse(
+            object_uri=subscription_uri, predicate_uri=f"{DF}tracksSubscription", pretty=True
+        )
+        connector_uri = (
+            f"{DF_INSTANCE}{result.iloc[0]['subjectIri']}"  # this should be the connector URI
+        )
 
-        module_result = await self.get_properties(subject_uri=connector_uri, property_uris=[f"{DF}moduleId"], pretty=True)
+        module_result = await self.get_properties(
+            subject_uri=connector_uri, property_uris=[f"{DF}moduleId"], pretty=True
+        )
         module_id = module_result.iloc[0]["object"]
 
         return {
             "connector_uri": connector_uri,
             "module_id": module_id,
-            "subscription_uri": subscription_uri
+            "subscription_uri": subscription_uri,
         }
 
-    async def resolve_and_subscribe(self, datapoint_uri: str, timeout: int=5):
+    async def resolve_and_subscribe(self, datapoint_uri: str, timeout: int = 5):
         """High-level method to trace, switch connector, and subscribe."""
         result = await self.resolve_connector_from_datapoint(datapoint_uri)
 
@@ -389,7 +416,7 @@ class ConnectorClient:
         base_payload = SubscriptionRegisterRequest(
             datapoint_identifier=[datapoint_identifier],
             device_origin="client",
-            subscription_identifier=uuid4()
+            subscription_identifier=uuid4(),
         )
 
         await self.switch_connector(result["module_id"])
@@ -415,36 +442,33 @@ class ConnectorClient:
         await self.switch_connector(result["module_id"])
         return await self.send_read_and_await_response(read_payload, timeout)
 
-    async def resolve_and_unsubscribe(self, subscription_uri: str, timeout: int=5):
+    async def resolve_and_unsubscribe(self, subscription_uri: str, timeout: int = 5):
 
         result = await self.resolve_connector_from_subscription(subscription_uri)
 
         print(result["subscription_uri"].split("#")[-1])
         base_payload = SubscriptionUnregisterRequest(
             subscription_identifier=result["subscription_uri"].split("#")[-1],
-            device_origin="client"
+            device_origin="client",
         )
 
         await self.switch_connector(result["module_id"])
         return await self.send_unsubscribe_and_await_response(base_payload, timeout)
 
-    async def resolve_and_trigger_action(self, value_dict: str, timeout: int=5):
+    async def resolve_and_trigger_action(self, value_dict: str, timeout: int = 5):
         # todo: at a later point, datapoint_uri should be a generic dict with data payloads for actions
 
         # todo: resolve payload from knowledge graph (e.g. trace back the action from the KG
         result = {}
         result["module_id"] = "opcua_dev_connector"
 
-        base_payload = OPCUAWritePayload(
-            device_origin="client",
-            value_dict=value_dict
-        )
+        base_payload = OPCUAWritePayload(device_origin="client", value_dict=value_dict)
 
         await self.switch_connector(result["module_id"])
         return await self.send_action_and_await_response(base_payload, timeout)
 
     # todo: old and potentially deprecated - not of interest for core client
-    async def collect_data_for_duration(self, base_payload, duration: int=10) -> list:
+    async def collect_data_for_duration(self, base_payload, duration: int = 10) -> list:
         collected_data = []
 
         msg = await self.send_subscribe_and_await_response(base_payload=base_payload)
@@ -460,19 +484,22 @@ class ConnectorClient:
                 if asyncio.get_event_loop().time() - start_time > duration:
                     break
 
-        unsubscribe_payload = SubscriptionUnregisterRequest(subscription_identifier=subscription_id,
-                                                            device_origin="client")
-        #unsubscribe_payload = OPCUAUnsubscribeCommandPayload(subscription_id=subscription_id, device_origin="client")
+        unsubscribe_payload = SubscriptionUnregisterRequest(
+            subscription_identifier=subscription_id, device_origin="client"
+        )
+        # unsubscribe_payload = OPCUAUnsubscribeCommandPayload(subscription_id=subscription_id, device_origin="client")
         await self.send_unsubscribe_and_await_response(base_payload=unsubscribe_payload)
 
         rows = []
         for payload in collected_data:
             for nodeid, value in payload.values.items():
-                rows.append({
-                    "timestamp": payload.timestamp,
-                    "nodeid": nodeid,
-                    "value": value,
-                })
+                rows.append(
+                    {
+                        "timestamp": payload.timestamp,
+                        "nodeid": nodeid,
+                        "value": value,
+                    }
+                )
         return pd.DataFrame(rows)
 
     # todo: old and potentially deprecated - not of interest for core client
@@ -486,7 +513,6 @@ class ConnectorClient:
             return
         # check if the subscription is closed
 
-
         # todo: subscribe_from_stream
         async with get_kafka_consumer(self.telemetry_topic, self.bootstrap_server) as consumer:
             start_time = asyncio.get_event_loop().time()
@@ -494,7 +520,7 @@ class ConnectorClient:
                 msg = MsgModel.model_validate(message.value)
                 payload = msg.root.payload.base_payload
 
-                if str(payload.subscription_id) !=subscription_id:
+                if str(payload.subscription_id) != subscription_id:
                     continue
 
                 collected_data.append(payload)
@@ -502,16 +528,17 @@ class ConnectorClient:
                 if asyncio.get_event_loop().time() - start_time > duration:
                     break
 
-
         # Convert collected data to DataFrame
         rows = []
         for payload in collected_data:
             for nodeid, value in payload.values.items():
-                rows.append({
-                    "timestamp": payload.timestamp,
-                    "nodeid": nodeid,
-                    "value": value,
-                })
+                rows.append(
+                    {
+                        "timestamp": payload.timestamp,
+                        "nodeid": nodeid,
+                        "value": value,
+                    }
+                )
 
         return pd.DataFrame(rows)
 
@@ -520,19 +547,18 @@ class ConnectorClient:
         # todo: needs to be checked!!!
         subscription_ids = []
         for entry in self.subscriptions:
-            subscription_ids.append({
-                "message_id": entry.root.message_id,
-                "timestamp": entry.root.timestamp
-            })
+            subscription_ids.append(
+                {"message_id": entry.root.message_id, "timestamp": entry.root.timestamp}
+            )
         return subscription_ids
 
-####### sparql stuff
+    ####### sparql stuff
 
     async def query_graphdb(self, query: str, pretty=False):
         async with aiohttp.ClientSession() as session:
             headers = {
                 "Accept": "application/sparql-results+json",
-                "Content-Type": "application/x-www-form-urlencoded"
+                "Content-Type": "application/x-www-form-urlencoded",
             }
             data = {"query": query}
 
@@ -550,15 +576,19 @@ class ConnectorClient:
                     return []
 
     # basic intents
-    async def get_all_classes(self, pretty: bool=False):
+    async def get_all_classes(self, pretty: bool = False):
         query = self.builder.get_all_classes_query()
         return await self.query_graphdb(query, pretty=pretty)
 
-    async def list_instances(self, class_uri: str, optional_props: list[str] = None, pretty: bool = False):
+    async def list_instances(
+        self, class_uri: str, optional_props: list[str] = None, pretty: bool = False
+    ):
         query = self.builder.build_list_instances_query(class_uri, optional_props)
         return await self.query_graphdb(query, pretty=pretty)
 
-    async def get_properties(self, subject_uri: str, property_uris: list[str] = None, pretty: bool = False):
+    async def get_properties(
+        self, subject_uri: str, property_uris: list[str] = None, pretty: bool = False
+    ):
         query = self.builder.build_get_properties_query(subject_uri, property_uris)
         return await self.query_graphdb(query, pretty=pretty)
 
@@ -566,16 +596,26 @@ class ConnectorClient:
         query = self.builder.build_get_related_query(subject_uri, predicate_uri)
         return await self.query_graphdb(query, pretty=pretty)
 
-    async def get_related_inverse(self, object_uri: str, predicate_uri: str, optional_props: list[str] = None, pretty=False):
-        query = self.builder. build_get_related_inverse_query(object_uri, predicate_uri, optional_props)
+    async def get_related_inverse(
+        self, object_uri: str, predicate_uri: str, optional_props: list[str] = None, pretty=False
+    ):
+        query = self.builder.build_get_related_inverse_query(
+            object_uri, predicate_uri, optional_props
+        )
         return await self.query_graphdb(query, pretty=pretty)
 
-    async def search_entity(self, keyword: str, class_uri: str = None, property_uri: str = "rdfs:label",
-                     match_mode: str = "fuzzy", pretty: bool = False):
+    async def search_entity(
+        self,
+        keyword: str,
+        class_uri: str = None,
+        property_uri: str = "rdfs:label",
+        match_mode: str = "fuzzy",
+        pretty: bool = False,
+    ):
         query = self.builder.build_search_entity_query(keyword, class_uri, property_uri, match_mode)
         return await self.query_graphdb(query, pretty=pretty)
 
-####### sync methods
+    ####### sync methods
 
     def resolve_connector_and_payload_sync(self, datapoint_uri: str):
         return run_async_in_sync(self.resolve_connector_from_datapoint, datapoint_uri)
@@ -618,15 +658,25 @@ class ConnectorClient:
     def get_related_sync(self, subject_uri: str, predicate_uri: str):
         return run_async_in_sync(self.get_related, subject_uri, predicate_uri)
 
-    def get_related_inverse_sync(self, object_uri: str, predicate_uri: str, optional_props: list[str] = None):
-        return run_async_in_sync(self.get_related_inverse, object_uri, predicate_uri, optional_props)
+    def get_related_inverse_sync(
+        self, object_uri: str, predicate_uri: str, optional_props: list[str] = None
+    ):
+        return run_async_in_sync(
+            self.get_related_inverse, object_uri, predicate_uri, optional_props
+        )
 
-    def search_entity_sync(self, keyword: str, class_uri: str = None, property_uri: str = "rdfs:label",
-                           match_mode: str = "fuzzy"):
+    def search_entity_sync(
+        self,
+        keyword: str,
+        class_uri: str = None,
+        property_uri: str = "rdfs:label",
+        match_mode: str = "fuzzy",
+    ):
         return run_async_in_sync(self.search_entity, keyword, class_uri, property_uri, match_mode)
 
     def load_connector_config_sync(self):
         run_async_in_sync(self.load_connector_config)
+
 
 # # todo: make this subscribe_to_nodes generic as it needs to be used for (a) testing as well as for (b) user-scripting
 # #  and (c) tool-calling

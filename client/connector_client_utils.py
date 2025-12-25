@@ -18,6 +18,7 @@ def sparql_results_to_dataframe(bindings: list, simplify: bool = True) -> pd.Dat
     Returns:
         pd.DataFrame: Flattened and optionally simplified DataFrame.
     """
+
     def strip_uri(val):
         if isinstance(val, dict) and "value" in val:
             value = val["value"]
@@ -60,6 +61,7 @@ def sparql_results_to_dataframe_old(bindings: list) -> pd.DataFrame:
 
     return pd.DataFrame(rows)
 
+
 # Helper function to run async methods in sync mode
 def run_async_in_sync(async_func, *args, **kwargs):
     """Run async functions in sync mode in Python console"""
@@ -74,21 +76,24 @@ def run_async_in_sync(async_func, *args, **kwargs):
     result = loop.run_until_complete(async_func(*args, **kwargs))
     return result
 
+
 def dump_payload(msg: MsgModel):
     return msg.model_dump_json(indent=4)
+
 
 @asynccontextmanager
 async def get_kafka_consumer(topic: str, bootstrap_servers: List[str]):
     consumer = AIOKafkaConsumer(
         topic,
         bootstrap_servers=bootstrap_servers,
-        value_deserializer=lambda m: json.loads(m.decode("utf-8"))
+        value_deserializer=lambda m: json.loads(m.decode("utf-8")),
     )
     await consumer.start()
     try:
         yield consumer
     finally:
         await consumer.stop()
+
 
 def simplify_sparql_results(results):
     def strip_uri(val):
