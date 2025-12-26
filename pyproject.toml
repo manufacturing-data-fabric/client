@@ -16,8 +16,9 @@ dependencies = [
     "python-dotenv>=1.0",
     "rdflib>=7.1",
     "pandas>=2.2",
-    "pydantic>=2.10"
-    # todo: check how to display the connector_base module here!
+    "pydantic>=2.10",
+    "connector-base>=0.1.0",
+    "data-catalog>=0.1.0",
 ]
 
 [project.urls]
@@ -33,6 +34,10 @@ dev = [
     "black",
     "isort",
     "deptry",
+]
+deploy = [
+    "connector-base @ git+https://github.com/manufacturing-data-fabric/connector-base.git@main",
+    "data-catalog @ git+https://github.com/manufacturing-data-fabric/data-catalog.git@main",
 ]
 
 [tool.hatch.metadata]
