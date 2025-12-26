@@ -17,8 +17,7 @@ dependencies = [
     "rdflib>=7.1",
     "pandas>=2.2",
     "pydantic>=2.10",
-    "connector-base>=0.1.0",
-    "data-catalog>=0.1.0",
+    # todo: at a later point, connector-base and data-catalog should be installed from PyPI
 ]
 
 [project.urls]
