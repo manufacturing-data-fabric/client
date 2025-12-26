@@ -196,7 +196,8 @@ class ConnectorClient:
         if not self.producer:
             await self._create_producer()
 
-        request_message = create_request(base_payload=base_payload, command_type=ReadCommand)
+        #request_message = create_request(base_payload=base_payload, command_type=ReadCommand)
+        request_message = create_request(base_payload=base_payload, command_cls=ReadCommand)
         correlation_id = request_message.root.correlation_id
 
         self._logger.info(f"Sent read request with correlation_id: {correlation_id}")
@@ -243,7 +244,8 @@ class ConnectorClient:
         if not self.producer:
             await self._create_producer()
 
-        request_message = create_request(base_payload=base_payload, command_type=SubscribeCommand)
+        #request_message = create_request(base_payload=base_payload, command_type=SubscribeCommand)
+        request_message = create_request(base_payload=base_payload, command_cls=SubscribeCommand)
         correlation_id = request_message.root.correlation_id
 
         self._logger.info(f"Sent subscribe request with correlation_id: {correlation_id}")
@@ -296,7 +298,8 @@ class ConnectorClient:
         if not self.producer:
             await self._create_producer()
 
-        request_message = create_request(base_payload=base_payload, command_type=UnsubscribeCommand)
+        #request_message = create_request(base_payload=base_payload, command_type=UnsubscribeCommand)
+        request_message = create_request(base_payload=base_payload, command_cls=UnsubscribeCommand)
         correlation_id = request_message.root.correlation_id
 
         self._logger.info(f"Sent unsubscribe request with correlation_id: {correlation_id}")
@@ -343,7 +346,8 @@ class ConnectorClient:
         if not self.producer:
             await self._create_producer()
 
-        request_message = create_request(base_payload=base_payload, command_type=ActionCommand)
+        #request_message = create_request(base_payload=base_payload, command_type=ActionCommand)
+        request_message = create_request(base_payload=base_payload, command_cls=ActionCommand)
         correlation_id = request_message.root.correlation_id
 
         self._logger.info(f"Sent action command with correlation_id: {correlation_id}")
