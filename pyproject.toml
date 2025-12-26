@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "client"
 version = "0.1.0"
-requires_python = ">=3.10"
+requires-python = ">=3.10"
 license = { file = "LICENSE" } # todo: insert license file to repo
 authors = [{ name = "Stephan Trattnig", email = "stephan.trattnig@iwb.tum.de"}]
 description = "Python client for interacting with a Knowledge Graph and Kafka-based Connectors"
@@ -31,7 +31,6 @@ dev = [
     "ruff",
     "mypy",
     "black",
-    "isort",
     "deptry",
 ]
 deploy = [
@@ -75,6 +74,11 @@ strict = true
 ignore_missing_imports = true
 check_untyped_defs = true
 disallow_untyped_defs = true
+
+[tool.pydoclint]
+style = "google"
+require-return = true
+require-raises = false
 
 [tool.hatch.build.targets.wheel]
 packages = ["client"]
